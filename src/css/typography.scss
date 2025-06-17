@@ -1,0 +1,15 @@
+@mixin h1 {
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 32px;
+}
+@mixin h2 {
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 30px;
+}
+@mixin h3 {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 28px;
+}
