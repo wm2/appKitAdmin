@@ -202,11 +202,11 @@
           </q-item-section>
         </q-item>
 
-        <!-- Варианты товаров -->
+        <!-- Варианты товаров/услуг -->
         <q-item
           clickable
           v-ripple
-          :to="{ name: 'ServiceVariants' }"
+          :to="{ name: 'ServiceVariants', params: { serviceId: 'all' } }"
           active-class="bg-primary text-white"
           class="rounded-borders q-mb-xs"
         >
@@ -268,109 +268,36 @@ import { useBrandsStore } from 'stores/brands.store';
 import { useMeasurementSystemsStore } from 'stores/measurement-systems.store';
 import { useProductTypesStore } from 'stores/product-types.store';
 import { useSizeChartsStore } from 'stores/size-charts.store';
-import { useSizesStore } from 'stores/sizes.store';
 import { useServiceCategoriesStore } from 'stores/service-categories.store';
 import { useServicesStore } from 'stores/services.store';
 import { useServiceAttributesStore } from 'stores/service-attributes.store';
-import { useServiceVariantsStore } from 'stores/service-variants.store';
+// import { useServiceVariantsStore } from 'stores/service-variants.store'; // Раскомментировать когда создан store
 
 const uiStore = useUiStore();
 const brandsStore = useBrandsStore();
 const measurementSystemsStore = useMeasurementSystemsStore();
 const productTypesStore = useProductTypesStore();
 const sizeChartsStore = useSizeChartsStore();
-const sizesStore = useSizesStore();
 const serviceCategoriesStore = useServiceCategoriesStore();
 const servicesStore = useServicesStore();
 const serviceAttributesStore = useServiceAttributesStore();
-const serviceVariantsStore = useServiceVariantsStore();
+// const serviceVariantsStore = useServiceVariantsStore(); // Раскомментировать когда создан store
 
 /**
  * Computed свойства для подсчета количества элементов в бейджах
  * Все computed свойства используют optional chaining для безопасного доступа к данным
- * и fallback значения для предотвращения ошибок
  */
-const serviceCategoriesCount = computed(() => {
-  try {
-    return serviceCategoriesStore?.totalCount ?? 0;
-  } catch (error) {
-    console.warn('Error accessing serviceCategoriesStore.totalCount:', error);
-    return 0;
-  }
-});
+const serviceCategoriesCount = computed(() => serviceCategoriesStore?.totalCount ?? 0);
+const brandsCount = computed(() => brandsStore?.totalCount ?? 0);
+const measurementSystemsCount = computed(() => measurementSystemsStore?.totalCount ?? 0);
+const productTypesCount = computed(() => productTypesStore?.totalCount ?? 0);
+const sizeChartsCount = computed(() => sizeChartsStore?.totalCount ?? 0);
+const servicesCount = computed(() => servicesStore?.totalCount ?? 0);
+const serviceAttributesCount = computed(() => serviceAttributesStore?.totalCount ?? 0);
 
-const brandsCount = computed(() => {
-  try {
-    return brandsStore?.totalCount ?? 0;
-  } catch (error) {
-    console.warn('Error accessing brandsStore.totalCount:', error);
-    return 0;
-  }
-});
-
-const measurementSystemsCount = computed(() => {
-  try {
-    return measurementSystemsStore?.totalCount ?? 0;
-  } catch (error) {
-    console.warn('Error accessing measurementSystemsStore.totalCount:', error);
-    return 0;
-  }
-});
-
-const productTypesCount = computed(() => {
-  try {
-    return productTypesStore?.totalCount ?? 0;
-  } catch (error) {
-    console.warn('Error accessing productTypesStore.totalCount:', error);
-    return 0;
-  }
-});
-
-const sizeChartsCount = computed(() => {
-  try {
-    return sizeChartsStore?.totalCount ?? 0;
-  } catch (error) {
-    console.warn('Error accessing sizeChartsStore.totalCount:', error);
-    return 0;
-  }
-});
-
-const servicesCount = computed(() => {
-  try {
-    return servicesStore?.totalCount ?? 0;
-  } catch (error) {
-    console.warn('Error accessing servicesStore.totalCount:', error);
-    return 0;
-  }
-});
-
-const serviceAttributesCount = computed(() => {
-  try {
-    return serviceAttributesStore?.totalCount ?? 0;
-  } catch (error) {
-    console.warn('Error accessing serviceAttributesStore.totalCount:', error);
-    return 0;
-  }
-});
-
-const serviceVariantsCount = computed(() => {
-  try {
-    return serviceVariantsStore?.totalCount ?? 0;
-  } catch (error) {
-    console.warn('Error accessing serviceVariantsStore.totalCount:', error);
-    return 0;
-  }
-});
-
-// Размеры из sizes.store
-const sizesCount = computed(() => {
-  try {
-    return sizesStore?.totalCount ?? 0;
-  } catch (error) {
-    console.warn('Error accessing sizesStore.totalCount:', error);
-    return 0;
-  }
-});
+// Временно устанавливаем в 0 до создания stores
+const sizesCount = computed(() => 0); // Заменить на sizesStore.totalCount когда создан store
+const serviceVariantsCount = computed(() => 0); // Заменить на serviceVariantsStore.totalCount когда создан store
 </script>
 
 <style scoped lang="scss">

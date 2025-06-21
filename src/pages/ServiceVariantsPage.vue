@@ -1,189 +1,162 @@
 <template>
   <q-page padding>
-    <!-- Адаптивный заголовок -->
-    <div class="q-mb-md">
-      <!-- Основной заголовок и кнопка добавления -->
-      <div class="row justify-between items-center">
-        <div class="text-h5">
-          <span>Управление вариантами товаров</span>
-          <div v-if="currentServiceInfo" class="text-caption text-grey-6 q-mt-xs">
-            Сервис: {{ currentServiceInfo.name }}
-          </div>
+    <div class="column q-gutter-md">
+      <!-- Заголовок и элементы управления -->
+      <div class="row items-center justify-between">
+        <div>
+          <h4 class="q-my-none">Варианты товаров</h4>
+          <p class="text-grey-6 q-mb-none">Управление вариантами товаров по размерам</p>
         </div>
-        <div class="row q-gutter-sm">
+
+        <div class="row q-gutter-md items-center">
           <!-- Выбор сервиса -->
           <q-select
             v-model="selectedServiceId"
             :options="serviceOptions"
-            option-value="id"
             option-label="name"
-            label="Выбрать сервис"
+            option-value="id"
             emit-value
             map-options
+            label="Выберите сервис"
             outlined
             dense
-            style="min-width: 200px"
+            style="min-width: 250px"
             :loading="servicesLoading"
             @update:model-value="onServiceChange"
           >
-            <template v-slot:prepend>
-              <q-icon name="inventory" />
+            <template v-slot:no-option>
+              <q-item>
+                <q-item-section class="text-grey"> Сервисы не найдены </q-item-section>
+              </q-item>
             </template>
           </q-select>
+
+          <!-- Кнопка создания варианта -->
           <q-btn
+            label="Добавить вариант"
             color="primary"
             icon="add"
             @click="openCreateVariantDialog"
-            :label="$q.screen.gt.xs ? 'Добавить вариант' : ''"
-            :round="$q.screen.xs"
-            :disable="!serviceVariantsStore.hasServiceContext"
+            :disable="!hasValidContext"
+          />
+
+          <!-- 🆕 Кнопка диагностики -->
+          <q-btn
+            v-if="hasValidContext"
+            label="Проверить все варианты"
+            color="orange"
+            icon="refresh"
+            outline
+            size="sm"
+            @click="diagnoseAllVariants"
+            :loading="diagnosisLoading"
           />
         </div>
       </div>
 
-      <!-- Информация о контексте -->
-      <div v-if="!serviceVariantsStore.hasServiceContext" class="q-mt-sm">
-        <q-banner class="bg-warning text-dark" rounded>
-          <template v-slot:avatar>
-            <q-icon name="warning" />
-          </template>
-          Выберите сервис для работы с вариантами.
-        </q-banner>
-      </div>
-
-      <!-- Статистика -->
-      <div v-if="serviceVariantsStore.hasServiceContext" class="q-mt-sm">
-        <div class="row q-gutter-sm">
-          <q-chip color="green" text-color="white" size="sm">
-            Активных: {{ serviceVariantsStore.activeVariantsCount }}
-          </q-chip>
-          <q-chip color="red" text-color="white" size="sm">
-            Неактивных: {{ serviceVariantsStore.inactiveVariantsCount }}
-          </q-chip>
-          <q-chip color="blue" text-color="white" size="sm">
-            Всего: {{ serviceVariantsStore.totalCount }}
-          </q-chip>
-        </div>
-      </div>
-
-      <!-- Компактная панель массовых операций -->
-      <q-slide-transition>
-        <div v-if="selectedRows.length > 0" class="q-mt-sm">
-          <q-card flat bordered class="bg-blue-1">
-            <q-card-section class="q-pa-sm">
-              <div
-                :class="$q.screen.xs ? 'column q-gutter-y-sm' : 'row items-center justify-between'"
-              >
-                <span class="text-blue-8 text-body2">{{ selectedRows.length }} выбрано</span>
-                <div class="row q-gutter-xs">
-                  <q-btn
-                    :dense="$q.screen.xs"
-                    :size="$q.screen.xs ? 'md' : 'md'"
-                    flat
-                    color="green"
-                    icon="check_circle"
-                    @click="bulkActivate"
-                    :loading="bulkOperationLoading"
-                    label="Активировать"
-                  />
-                  <q-btn
-                    :dense="$q.screen.xs"
-                    :size="$q.screen.xs ? 'md' : 'md'"
-                    flat
-                    color="orange"
-                    icon="cancel"
-                    @click="bulkDeactivate"
-                    :loading="bulkOperationLoading"
-                    label="Деактивировать"
-                  />
-                  <q-btn
-                    :dense="$q.screen.xs"
-                    :size="$q.screen.xs ? 'md' : 'md'"
-                    flat
-                    color="negative"
-                    icon="delete"
-                    @click="confirmBulkDelete"
-                    :loading="bulkOperationLoading"
-                    label="Удалить"
-                  />
-                </div>
+      <!-- Информация о выбранном сервисе -->
+      <q-card v-if="currentServiceInfo" flat bordered>
+        <q-card-section>
+          <div class="row items-center q-gutter-md">
+            <q-icon name="info" color="primary" size="md" />
+            <div>
+              <div class="text-h6">{{ currentServiceInfo.name }}</div>
+              <div class="text-grey-6">
+                Активных вариантов: {{ serviceVariantsStore.activeVariantsCount }} | Неактивных:
+                {{ serviceVariantsStore.inactiveVariantsCount }}
               </div>
-            </q-card-section>
-          </q-card>
+            </div>
+          </div>
+        </q-card-section>
+      </q-card>
+
+      <!-- Поиск и фильтры -->
+      <div v-if="hasValidContext" class="row q-gutter-md items-center">
+        <q-input
+          v-model="searchQuery"
+          placeholder="Поиск по SKU..."
+          outlined
+          dense
+          clearable
+          @update:model-value="onSearchInput"
+          @clear="clearSearch"
+          style="min-width: 250px"
+        >
+          <template v-slot:prepend>
+            <q-icon name="search" />
+          </template>
+        </q-input>
+
+        <!-- Массовые операции (только для выбранных строк) -->
+        <div v-if="selectedRows.length > 0" class="row q-gutter-sm">
+          <q-btn
+            label="Активировать"
+            color="positive"
+            size="sm"
+            :loading="bulkOperationLoading"
+            @click="bulkActivate"
+          />
+          <q-btn
+            label="Деактивировать"
+            color="warning"
+            size="sm"
+            :loading="bulkOperationLoading"
+            @click="bulkDeactivate"
+          />
+          <q-btn
+            label="Удалить"
+            color="negative"
+            size="sm"
+            :loading="bulkOperationLoading"
+            @click="bulkDelete"
+          />
         </div>
-      </q-slide-transition>
-    </div>
+      </div>
 
-    <!-- Поле поиска -->
-    <div v-if="serviceVariantsStore.hasServiceContext" class="q-mb-md">
-      <q-input
-        v-model="searchQuery"
-        placeholder="Поиск по SKU или цене..."
-        clearable
-        outlined
-        dense
-        @update:model-value="onSearchInput"
-        @clear="clearSearch"
-      >
-        <template v-slot:prepend>
-          <q-icon name="search" />
-        </template>
-      </q-input>
-    </div>
+      <!-- Контент -->
+      <div v-if="!hasValidContext" class="text-center q-pa-xl">
+        <q-icon name="info_outline" size="64px" color="grey-5" />
+        <div class="text-h6 q-mt-md text-grey-6">Выберите сервис для просмотра вариантов</div>
+        <div class="text-body2 text-grey-5 q-mt-sm">
+          Используйте селектор сервиса выше для начала работы
+        </div>
+      </div>
 
-    <!-- Счетчик и загрузка -->
-    <div v-if="serviceVariantsStore.loading" class="flex flex-center q-pa-md">
-      <q-spinner color="primary" size="3em" />
-    </div>
-
-    <!-- Десктопная таблица -->
-    <div
-      v-if="!serviceVariantsStore.loading && $q.screen.gt.xs && hasValidContext"
-      class="desktop-view"
-    >
+      <!-- Desktop Table -->
       <q-table
-        title="Варианты товара"
+        v-else-if="!$q.screen.xs"
         :rows="serviceVariantsStore.variants"
         :columns="columns"
-        row-key="id"
         :loading="serviceVariantsStore.loading"
-        v-model:pagination="serviceVariantsStore.qTablePagination"
-        v-model:selected="selectedRows"
-        selection="multiple"
+        :pagination="serviceVariantsStore.qTablePagination"
         @request="onRequest"
-        @row-click="openVariantDetailDialog"
-        binary-state-sort
-        :rows-per-page-options="[5, 10, 20, 30, 50]"
-        class="cursor-pointer variants-table"
+        row-key="id"
+        selection="multiple"
+        v-model:selected="selectedRows"
+        class="variants-table desktop-view"
+        :rows-per-page-options="[10, 25, 50]"
       >
         <template v-slot:body-cell-size="props">
           <q-td :props="props">
-            <div class="column">
-              <span class="text-weight-medium">{{ props.row.size.value }}</span>
-              <span class="text-caption text-grey-6">{{ props.row.size.measurement_system }}</span>
+            <div class="text-weight-medium">{{ props.row.size.value }}</div>
+            <div class="text-caption text-grey-6">
+              {{ props.row.size.measurement_system }}
             </div>
           </q-td>
         </template>
 
         <template v-slot:body-cell-price="props">
           <q-td :props="props">
-            <span v-if="props.row.price" class="text-weight-medium">
-              {{ formatPrice(props.row.price) }}
-            </span>
-            <span v-else class="text-grey-6">-</span>
+            {{ formatPrice(props.row.price) }}
           </q-td>
         </template>
 
         <template v-slot:body-cell-is_active="props">
           <q-td :props="props">
             <q-chip
-              :color="props.row.is_active ? 'green' : 'red'"
-              :icon="props.row.is_active ? 'check_circle' : 'cancel'"
+              :color="props.row.is_active ? 'positive' : 'negative'"
               text-color="white"
-              dense
-              size="md"
-              clickable
-              @click.stop="confirmToggleActiveStatus(props.row)"
+              size="sm"
             >
               {{ props.row.is_active ? 'Активен' : 'Неактивен' }}
             </q-chip>
@@ -192,260 +165,247 @@
 
         <template v-slot:body-cell-attributes="props">
           <q-td :props="props">
-            <div v-if="props.row.attributes && Object.keys(props.row.attributes).length > 0">
-              <q-badge
-                color="blue"
-                :label="Object.keys(props.row.attributes).length"
-                class="cursor-pointer"
-                @click.stop="showAttributesDialog(props.row.attributes)"
-              />
-            </div>
-            <span v-else class="text-grey-6">-</span>
+            <q-btn
+              v-if="props.row.attributes && Object.keys(props.row.attributes).length > 0"
+              flat
+              dense
+              round
+              icon="visibility"
+              size="sm"
+              @click="showAttributesDialog(props.row.attributes)"
+            />
+            <span v-else class="text-grey-5">—</span>
           </q-td>
         </template>
 
         <template v-slot:body-cell-actions="props">
-          <q-td :props="props" class="text-right">
-            <div class="row no-wrap q-gutter-xs justify-end">
+          <q-td :props="props">
+            <div class="row q-gutter-xs no-wrap">
               <q-btn
                 flat
                 round
                 dense
                 icon="visibility"
-                color="primary"
-                @click.stop="openVariantDetailFromButton(props.row)"
-              >
-                <q-tooltip>Просмотр</q-tooltip>
-              </q-btn>
-              <q-btn flat round dense icon="edit" @click.stop="openEditVariantDialog(props.row)">
-                <q-tooltip>Редактировать</q-tooltip>
-              </q-btn>
+                size="sm"
+                @click="openVariantDetailFromButton(props.row)"
+              />
+              <q-btn
+                flat
+                round
+                dense
+                icon="edit"
+                size="sm"
+                @click="openEditVariantDialog(props.row)"
+              />
               <q-btn
                 flat
                 round
                 dense
                 icon="delete"
+                size="sm"
                 color="negative"
-                @click.stop="confirmDeleteVariant(props.row)"
-              >
-                <q-tooltip>Удалить</q-tooltip>
-              </q-btn>
+                @click="confirmDeleteVariant(props.row)"
+              />
             </div>
           </q-td>
         </template>
 
-        <template v-slot:no-data="{ icon, message, filter }">
-          <div class="full-width row flex-center text-accent q-gutter-sm">
-            <q-icon size="2em" :name="filter ? 'filter_b_and_w' : icon" />
-            <span>{{ message }}</span>
+        <template v-slot:no-data>
+          <div class="full-width row flex-center q-gutter-sm">
+            <q-icon size="2em" name="warning" />
+            <span> Варианты товаров не найдены </span>
           </div>
         </template>
       </q-table>
-    </div>
 
-    <!-- Мобильный аккордеон -->
-    <div
-      v-if="!serviceVariantsStore.loading && $q.screen.xs && hasValidContext"
-      class="mobile-view"
-    >
-      <!-- Информация о количестве и пагинации -->
-      <div class="row items-center justify-between q-mb-md">
-        <div class="text-caption text-grey-7">Всего: {{ serviceVariantsStore.totalCount }}</div>
-        <div class="row q-gutter-xs">
-          <q-btn
-            flat
-            dense
-            icon="chevron_left"
-            @click="serviceVariantsStore.goToPreviousPage"
-            :disable="!serviceVariantsStore.hasPrevious"
-          />
-          <span class="text-caption q-px-sm">
-            {{ serviceVariantsStore.currentPage }} / {{ serviceVariantsStore.totalPages }}
-          </span>
-          <q-btn
-            flat
-            dense
-            icon="chevron_right"
-            @click="serviceVariantsStore.goToNextPage"
-            :disable="!serviceVariantsStore.hasNext"
-          />
+      <!-- Mobile Cards -->
+      <div v-else-if="hasValidContext" class="mobile-view">
+        <div v-if="serviceVariantsStore.variants.length === 0" class="text-center q-pa-xl">
+          <q-icon name="warning" size="64px" color="grey-5" />
+          <div class="text-h6 q-mt-md text-grey-6">Варианты товаров не найдены</div>
         </div>
-      </div>
 
-      <!-- Список карточек -->
-      <div class="q-gutter-sm">
-        <q-expansion-item
-          v-for="variant in serviceVariantsStore.variants"
-          :key="variant.id"
-          class="variant-card"
-          :header-class="selectedRows.some((row) => row.id === variant.id) ? 'bg-blue-1' : ''"
-        >
-          <template v-slot:header>
-            <div class="row items-center full-width no-wrap">
-              <!-- Чекбокс для выбора -->
-              <q-checkbox
-                :model-value="selectedRows.some((row) => row.id === variant.id)"
-                @update:model-value="(val) => toggleRowSelection(variant, val)"
-                class="q-mr-sm"
-                @click.stop
-              />
-
-              <!-- Размер -->
-              <div class="q-mr-md">
-                <div class="text-weight-medium">{{ variant.size.value }}</div>
-                <div class="text-caption text-grey-6">{{ variant.size.measurement_system }}</div>
-              </div>
-
-              <!-- Основная информация -->
-              <div class="col-grow q-mr-md">
-                <div class="text-weight-medium">{{ variant.sku || 'Без SKU' }}</div>
-                <div class="text-caption text-grey-6">
-                  {{ variant.price ? formatPrice(variant.price) : 'Цена не указана' }}
+        <div v-else class="column q-gutter-md">
+          <q-expansion-item
+            v-for="variant in serviceVariantsStore.variants"
+            :key="variant.id"
+            class="variant-card"
+            :label="`${variant.size.value} (${variant.size.measurement_system})`"
+            :caption="`SKU: ${variant.sku} | ${formatPrice(variant.price)}`"
+          >
+            <template v-slot:header>
+              <q-item-section>
+                <div class="row items-center justify-between full-width">
+                  <div>
+                    <q-item-label class="text-weight-medium">
+                      {{ variant.size.value }} ({{ variant.size.measurement_system }})
+                    </q-item-label>
+                    <q-item-label caption>
+                      SKU: {{ variant.sku }} | {{ formatPrice(variant.price) }}
+                    </q-item-label>
+                  </div>
+                  <div class="row items-center q-gutter-sm">
+                    <q-chip
+                      :color="variant.is_active ? 'positive' : 'negative'"
+                      text-color="white"
+                      size="sm"
+                    >
+                      {{ variant.is_active ? 'Активен' : 'Неактивен' }}
+                    </q-chip>
+                    <q-checkbox
+                      :model-value="selectedRows.some((row) => row.id === variant.id)"
+                      @update:model-value="
+                        (selected: boolean) => toggleRowSelection(variant, selected)
+                      "
+                    />
+                  </div>
                 </div>
-              </div>
+              </q-item-section>
+            </template>
 
-              <!-- Статус активности -->
-              <q-btn
-                :color="variant.is_active ? 'green' : 'red'"
-                text-color="white"
-                dense
-                size="sm"
-                @click.stop="confirmToggleActiveStatus(variant)"
-                class="q-mr-md"
-                :icon="variant.is_active ? 'check_circle' : 'cancel'"
-              />
+            <q-card-section>
+              <div class="row q-gutter-md justify-between">
+                <div class="col">
+                  <div class="text-caption text-grey-6">Атрибуты:</div>
+                  <div v-if="variant.attributes && Object.keys(variant.attributes).length > 0">
+                    <q-btn
+                      flat
+                      dense
+                      label="Просмотреть"
+                      icon="visibility"
+                      size="sm"
+                      @click="showAttributesDialog(variant.attributes)"
+                    />
+                  </div>
+                  <div v-else class="text-grey-5">Отсутствуют</div>
+                </div>
 
-              <!-- Стрелка аккордеона будет справа автоматически -->
-            </div>
-          </template>
-
-          <!-- Детальная информация и действия -->
-          <q-card flat>
-            <q-card-section class="q-pt-none">
-              <!-- Атрибуты -->
-              <div
-                v-if="variant.attributes && Object.keys(variant.attributes).length > 0"
-                class="text-body2 q-mb-md"
-              >
-                <strong>Атрибуты:</strong><br />
-                <q-chip
-                  v-for="(value, key) in variant.attributes"
-                  :key="key"
-                  size="sm"
-                  outline
-                  :label="`${key}: ${value}`"
-                  class="q-mr-xs q-mb-xs"
-                />
-              </div>
-
-              <!-- Действия в мобильной версии -->
-              <div class="column q-gutter-sm">
-                <q-btn
-                  unelevated
-                  color="primary"
-                  icon="visibility"
-                  label="Просмотреть детали"
-                  @click="openVariantDetailFromButton(variant)"
-                  class="full-width"
-                />
-                <div class="row q-gutter-sm">
+                <div class="row q-gutter-xs">
                   <q-btn
-                    outline
-                    color="warning"
-                    icon="edit"
-                    label="Изменить"
-                    @click="openEditVariantDialog(variant)"
-                    class="col"
+                    round
+                    dense
+                    icon="visibility"
+                    size="sm"
+                    @click="openVariantDetailFromButton(variant)"
                   />
                   <q-btn
-                    outline
-                    color="negative"
+                    round
+                    dense
+                    icon="edit"
+                    size="sm"
+                    @click="openEditVariantDialog(variant)"
+                  />
+                  <q-btn
+                    round
+                    dense
                     icon="delete"
-                    label="Удалить"
+                    size="sm"
+                    color="negative"
                     @click="confirmDeleteVariant(variant)"
-                    class="col"
                   />
                 </div>
               </div>
             </q-card-section>
-          </q-card>
-        </q-expansion-item>
-      </div>
-
-      <!-- Пустое состояние для мобильных -->
-      <div v-if="serviceVariantsStore.variants.length === 0" class="text-center q-pa-lg">
-        <q-icon name="inventory_2" size="4em" color="grey-4" />
-        <div class="text-grey-6 q-mt-sm">Варианты не найдены</div>
+          </q-expansion-item>
+        </div>
       </div>
     </div>
 
     <!-- Диалог создания/редактирования варианта -->
-    <q-dialog v-model="variantDialogVisible" persistent :maximized="$q.screen.xs">
-      <q-card :style="$q.screen.xs ? '' : 'min-width: 500px'">
+    <q-dialog v-model="variantDialogVisible" persistent>
+      <q-card style="min-width: 500px">
         <q-card-section>
-          <div class="text-h6">{{ isEditing ? 'Редактировать вариант' : 'Добавить вариант' }}</div>
+          <div class="text-h6">
+            {{ isEditing ? 'Редактировать вариант' : 'Создать новый вариант' }}
+          </div>
         </q-card-section>
 
         <q-card-section class="q-pt-none">
-          <!-- Размер -->
-          <q-select
-            v-model="currentVariant.size_id"
-            :options="sizeOptions"
-            option-value="id"
-            option-label="displayName"
-            label="Размер *"
-            emit-value
-            map-options
-            :rules="[(val) => !!val || 'Размер обязателен']"
-            lazy-rules
-            :loading="sizesLoading"
-          >
-            <template v-slot:no-option>
-              <q-item>
-                <q-item-section class="text-grey"> Нет доступных размеров </q-item-section>
-              </q-item>
-            </template>
-          </q-select>
+          <div class="column q-gutter-md">
+            <!-- Размер -->
+            <q-select
+              v-model="currentVariant.size_id"
+              :options="sizeOptions"
+              option-label="displayName"
+              option-value="id"
+              emit-value
+              map-options
+              label="Размер *"
+              outlined
+              :loading="sizesLoading"
+              :rules="[(val) => !!val || 'Размер обязателен']"
+              :option-disable="(opt) => opt.isDisabled"
+            >
+              <template v-slot:no-option>
+                <q-item>
+                  <q-item-section class="text-grey"> Размеры не найдены </q-item-section>
+                </q-item>
+              </template>
 
-          <!-- SKU -->
-          <q-input
-            v-model="currentVariant.sku"
-            label="SKU (Артикул)"
-            hint="Уникальный код товара"
-          />
+              <!-- 🆕 Кастомный рендер опций с цветовой индикацией -->
+              <template v-slot:option="scope">
+                <q-item v-bind="scope.itemProps" :class="scope.opt.isDisabled ? 'text-grey-5' : ''">
+                  <q-item-section>
+                    <q-item-label :class="scope.opt.isDisabled ? 'text-strike' : ''">
+                      {{ scope.opt.value }} ({{ scope.opt.measurement_system }})
+                    </q-item-label>
+                    <q-item-label v-if="scope.opt.isDisabled" caption class="text-orange">
+                      Уже используется в другом варианте
+                    </q-item-label>
+                  </q-item-section>
+                  <q-item-section side v-if="scope.opt.isDisabled">
+                    <q-icon name="block" color="orange" />
+                  </q-item-section>
+                </q-item>
+              </template>
+            </q-select>
 
-          <!-- Цена -->
-          <q-input
-            v-model="currentVariant.price"
-            label="Цена"
-            type="number"
-            step="0.01"
-            min="0"
-            hint="Цена в валюте сайта"
-          />
-
-          <!-- Активность -->
-          <q-toggle v-model="currentVariant.is_active" label="Активен" left-label />
-
-          <!-- Атрибуты -->
-          <div class="q-mt-md">
+            <!-- SKU -->
             <q-input
-              v-model="attributesJsonString"
-              label="Атрибуты (JSON)"
-              type="textarea"
-              autogrow
-              hint='Дополнительные атрибуты в формате JSON, например: {"color": "red", "material": "cotton"}'
-              :error="attributesError"
-              :error-message="attributesErrorMessage"
-              @update:model-value="validateAttributes"
+              v-model="currentVariant.sku"
+              label="SKU"
+              outlined
+              placeholder="Введите SKU варианта"
             />
+
+            <!-- Цена -->
+            <q-input
+              v-model="currentVariant.price"
+              label="Цена"
+              outlined
+              type="number"
+              step="0.01"
+              min="0"
+              placeholder="0.00"
+              suffix="₽"
+            />
+
+            <!-- Статус активности -->
+            <q-toggle v-model="currentVariant.is_active" label="Активен" color="positive" />
+
+            <!-- Атрибуты (JSON) -->
+            <div>
+              <q-input
+                v-model="attributesJsonString"
+                label="Атрибуты (JSON)"
+                outlined
+                type="textarea"
+                rows="4"
+                placeholder='{"color": "red", "material": "cotton"}'
+                :error="attributesError"
+                :error-message="attributesErrorMessage"
+                @update:model-value="validateAttributes"
+              />
+              <div class="text-caption text-grey-6 q-mt-xs">
+                Введите атрибуты в формате JSON. Оставьте пустым, если атрибуты не нужны.
+              </div>
+            </div>
           </div>
         </q-card-section>
 
         <q-card-actions align="right">
           <q-btn flat label="Отмена" v-close-popup />
           <q-btn
-            flat
             label="Сохранить"
             color="primary"
             @click="saveVariant"
@@ -456,90 +416,74 @@
       </q-card>
     </q-dialog>
 
-    <!-- Диалог детальной информации о варианте -->
-    <q-dialog v-model="variantDetailDialogVisible" :maximized="$q.screen.xs">
-      <q-card :style="$q.screen.xs ? '' : 'min-width: 500px; max-width: 600px'">
-        <q-card-section class="row items-center q-pb-none">
+    <!-- Диалог детального просмотра варианта -->
+    <q-dialog v-model="variantDetailDialogVisible">
+      <q-card style="min-width: 400px">
+        <q-card-section>
           <div class="text-h6">Детали варианта</div>
-          <q-space />
-          <q-btn icon="close" flat round dense v-close-popup />
         </q-card-section>
 
-        <q-card-section v-if="selectedVariantDetail">
-          <q-list>
-            <q-item>
-              <q-item-section>
-                <q-item-label class="text-weight-medium">Размер</q-item-label>
-                <q-item-label caption class="text-body1">
-                  {{ selectedVariantDetail.size.value }} ({{
-                    selectedVariantDetail.size.measurement_system
-                  }})
-                </q-item-label>
-              </q-item-section>
-            </q-item>
+        <q-card-section v-if="selectedVariantDetail" class="q-pt-none">
+          <div class="column q-gutter-md">
+            <div>
+              <div class="text-weight-medium">Размер:</div>
+              <div>
+                {{ selectedVariantDetail.size.value }} ({{
+                  selectedVariantDetail.size.measurement_system
+                }})
+              </div>
+            </div>
 
-            <q-item v-if="selectedVariantDetail.sku">
-              <q-item-section>
-                <q-item-label class="text-weight-medium">SKU</q-item-label>
-                <q-item-label caption class="text-body1">
-                  {{ selectedVariantDetail.sku }}
-                </q-item-label>
-              </q-item-section>
-            </q-item>
+            <div>
+              <div class="text-weight-medium">SKU:</div>
+              <div>{{ selectedVariantDetail.sku || '—' }}</div>
+            </div>
 
-            <q-item>
-              <q-item-section>
-                <q-item-label class="text-weight-medium">Цена</q-item-label>
-                <q-item-label caption class="text-body1">
-                  {{
-                    selectedVariantDetail.price
-                      ? formatPrice(selectedVariantDetail.price)
-                      : 'Не указана'
-                  }}
-                </q-item-label>
-              </q-item-section>
-            </q-item>
+            <div>
+              <div class="text-weight-medium">Цена:</div>
+              <div>{{ formatPrice(selectedVariantDetail.price) }}</div>
+            </div>
 
-            <q-item>
-              <q-item-section>
-                <q-item-label class="text-weight-medium">Статус</q-item-label>
-                <q-item-label caption>
-                  <q-chip
-                    :color="selectedVariantDetail.is_active ? 'green' : 'red'"
-                    text-color="white"
-                    size="sm"
-                  >
-                    {{ selectedVariantDetail.is_active ? 'Активен' : 'Неактивен' }}
-                  </q-chip>
-                </q-item-label>
-              </q-item-section>
-            </q-item>
+            <div>
+              <div class="text-weight-medium">Статус:</div>
+              <q-chip
+                :color="selectedVariantDetail.is_active ? 'positive' : 'negative'"
+                text-color="white"
+                size="sm"
+              >
+                {{ selectedVariantDetail.is_active ? 'Активен' : 'Неактивен' }}
+              </q-chip>
+            </div>
 
-            <q-item
-              v-if="
-                selectedVariantDetail.attributes &&
-                Object.keys(selectedVariantDetail.attributes).length > 0
-              "
-            >
-              <q-item-section>
-                <q-item-label class="text-weight-medium">Атрибуты</q-item-label>
-                <q-item-label caption class="text-body1">
-                  <div class="q-gutter-xs">
-                    <q-chip
-                      v-for="(value, key) in selectedVariantDetail.attributes"
-                      :key="key"
-                      size="sm"
-                      outline
-                      :label="`${key}: ${value}`"
-                    />
-                  </div>
-                </q-item-label>
-              </q-item-section>
-            </q-item>
-          </q-list>
+            <div>
+              <div class="text-weight-medium">Атрибуты:</div>
+              <div
+                v-if="
+                  selectedVariantDetail.attributes &&
+                  Object.keys(selectedVariantDetail.attributes).length > 0
+                "
+              >
+                <q-btn
+                  flat
+                  dense
+                  label="Просмотреть"
+                  icon="visibility"
+                  size="sm"
+                  @click="showAttributesDialog(selectedVariantDetail.attributes)"
+                />
+              </div>
+              <div v-else class="text-grey-5">Отсутствуют</div>
+            </div>
+
+            <div>
+              <div class="text-weight-medium">Сервис:</div>
+              <div>{{ getServiceName() }}</div>
+            </div>
+          </div>
         </q-card-section>
 
-        <q-card-actions align="right" class="q-pa-md">
+        <q-card-actions align="right">
+          <q-btn flat label="Закрыть" v-close-popup />
           <q-btn
             :label="$q.screen.xs ? '' : 'Редактировать'"
             color="primary"
@@ -571,7 +515,7 @@
               <q-item v-for="(value, key) in currentAttributes" :key="key">
                 <q-item-section>
                   <q-item-label class="text-weight-medium">{{ key }}</q-item-label>
-                  <q-item-label caption>{{ value }}</q-item-label>
+                  <q-item-label caption>{{ String(value) }}</q-item-label>
                 </q-item-section>
               </q-item>
             </q-list>
@@ -588,8 +532,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch, computed } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
+import { ref, onMounted, computed } from 'vue';
 import {
   useServiceVariantsStore,
   type ProductVariant,
@@ -598,12 +541,15 @@ import {
   type ProductVariantUpdatePayload,
 } from 'stores/service-variants.store';
 import { useSizesStore } from 'stores/sizes.store';
-import { useServicesStore, type ServiceFile } from 'stores/services.store';
+import { useSizeChartsStore } from 'stores/size-charts.store'; // 🆕 Добавляем стор размерных сеток
+import { useServicesStore } from 'stores/services.store';
 import { useQuasar, Dialog } from 'quasar';
 import type { QTableProps, QTableColumn } from 'quasar';
 
+// === ТИПЫ ===
+// ✅ ИСПРАВЛЕНИЕ: Делаем поле id опциональным
 interface VariantFormData {
-  id?: string;
+  id?: string; // Опциональное поле
   size_id: string;
   sku: string;
   price: string;
@@ -611,13 +557,14 @@ interface VariantFormData {
   attributes: Record<string, unknown>;
 }
 
-const route = useRoute();
-const router = useRouter();
+// === КОМПОЗАБЛЫ ===
 const $q = useQuasar();
 const serviceVariantsStore = useServiceVariantsStore();
 const sizesStore = useSizesStore();
+const sizeChartsStore = useSizeChartsStore(); // 🆕 Добавляем стор размерных сеток
 const servicesStore = useServicesStore();
 
+// === СОСТОЯНИЕ ===
 const variantDialogVisible = ref(false);
 const variantDetailDialogVisible = ref(false);
 const attributesDialogVisible = ref(false);
@@ -628,6 +575,7 @@ const selectedRows = ref<ProductVariant[]>([]);
 const bulkOperationLoading = ref(false);
 const sizesLoading = ref(false);
 const servicesLoading = ref(false);
+const diagnosisLoading = ref(false); // 🆕 Состояние для диагностики
 const attributesError = ref(false);
 const attributesErrorMessage = ref('');
 const attributesJsonString = ref('');
@@ -642,14 +590,12 @@ const currentVariant = ref<VariantFormData>({
   attributes: {},
 });
 
-// Получаем serviceId из роута
-const routeServiceId = computed(() => (route.params.serviceId as string) || '');
-const isAllServicesMode = computed(() => false); // Временно отключаем режим "все сервисы"
+// === COMPUTED ===
 
 // Информация о текущем сервисе
 const currentServiceInfo = computed(() => {
-  if (isAllServicesMode.value) return null;
-  return servicesStore.services.find((s) => s.id === routeServiceId.value) || null;
+  if (!selectedServiceId.value) return null;
+  return servicesStore.services.find((s) => s.id === selectedServiceId.value) || null;
 });
 
 // Проверка валидного контекста для отображения данных
@@ -664,7 +610,7 @@ const canSaveVariant = computed(() => {
   return !!(currentVariant.value.size_id && serviceVariantsStore.hasServiceContext);
 });
 
-// Опции для выбора сервиса (убираем "Все сервисы" поскольку API не поддерживает)
+// Опции для выбора сервиса
 const serviceOptions = computed(() =>
   servicesStore.services.map((service) => ({
     id: service.id,
@@ -672,15 +618,31 @@ const serviceOptions = computed(() =>
   })),
 );
 
-// Опции для размеров
+// Опции для размеров с проверкой доступности
 const sizeOptions = computed(() => {
-  if (!sizesStore.sizes) return [];
+  const sizes = sizesStore.sizes;
+  if (!sizes || sizes.length === 0) return [];
 
-  return sizesStore.sizes.map((size) => ({
-    id: size.id,
-    displayName: `${size.value} (${size.measurement_system})`,
-    ...size,
-  }));
+  // Получаем ID размеров, которые уже используются в вариантах
+  const usedSizeIds = new Set(serviceVariantsStore.variants.map((variant) => variant.size.id));
+
+  return sizes.map((size) => {
+    const isUsed = usedSizeIds.has(size.id);
+    const isCurrentEditing = isEditing.value && currentVariant.value.size_id === size.id;
+
+    return {
+      // ✅ ИСПРАВЛЕНИЕ: Убираем дублирование свойства id
+      id: size.id,
+      value: size.value,
+      measurement_system: size.measurement_system,
+      base_value: size.base_value,
+      displayName:
+        isUsed && !isCurrentEditing
+          ? `${size.value} (${size.measurement_system}) - УЖЕ ИСПОЛЬЗУЕТСЯ`
+          : `${size.value} (${size.measurement_system})`,
+      isDisabled: isUsed && !isCurrentEditing, // Не блокируем текущий редактируемый размер
+    };
+  });
 });
 
 // Колонки таблицы
@@ -731,21 +693,13 @@ const columns = computed((): QTableColumn[] => {
   ];
 });
 
-// Функции для получения информации о сервисе из варианта
-// API не возвращает информацию о сервисе в ответе, используем контекст
-function getServiceName(variant: ProductVariant | ProductVariantDetail): string {
-  if (isAllServicesMode.value) {
-    // В режиме "все сервисы" ищем сервис по currentServiceId
-    const service = servicesStore.services.find(
-      (s) => s.id === serviceVariantsStore.currentServiceId,
-    );
-    return service?.name || 'Неизвестный сервис';
-  }
-  return currentServiceInfo.value?.name || 'Неизвестный сервис';
-}
+// === МЕТОДЫ ===
 
-function getServiceId(variant: ProductVariant | ProductVariantDetail): string {
-  return serviceVariantsStore.currentServiceId || 'unknown';
+function getServiceName(): string {
+  const service = servicesStore.services.find(
+    (s) => s.id === serviceVariantsStore.currentServiceId,
+  );
+  return service?.name || 'Неизвестный сервис';
 }
 
 // Функция для управления выбором строк в мобильной версии
@@ -767,25 +721,36 @@ async function onRequest(props: { pagination: QTableProps['pagination'] }): Prom
 
 async function onSearchInput(value: string | number | null): Promise<void> {
   const searchValue = value ? String(value).trim() : '';
+
+  // 🔧 ИСПРАВЛЕНИЕ: используем правильные методы стора
   if (searchValue.length >= 2) {
-    await serviceVariantsStore.filterVariants({ sku: searchValue });
+    console.log('🔍 Searching variants with query:', searchValue);
+    await serviceVariantsStore.searchVariants(searchValue);
   } else if (searchValue.length === 0) {
+    console.log('🔄 Clearing search filters');
     await serviceVariantsStore.clearFilters();
   }
 }
 
 async function clearSearch(): Promise<void> {
   searchQuery.value = '';
+  console.log('🧹 Clearing search completely');
   await serviceVariantsStore.clearFilters();
 }
 
 // Обработчик изменения выбранного сервиса
 async function onServiceChange(newServiceId: string): Promise<void> {
-  // Обновляем URL
-  await router.push({
-    name: 'ServiceVariants',
-    params: { serviceId: newServiceId },
-  });
+  if (!newServiceId) {
+    // Сброс контекста
+    serviceVariantsStore.clearServiceContext();
+    selectedServiceId.value = '';
+    return;
+  }
+
+  // Устанавливаем контекст и загружаем данные
+  serviceVariantsStore.setServiceContext(newServiceId);
+  selectedServiceId.value = newServiceId;
+  await serviceVariantsStore.fetchVariants();
 }
 
 async function openVariantDetailFromButton(row: ProductVariant): Promise<void> {
@@ -796,13 +761,17 @@ async function openVariantDetailFromButton(row: ProductVariant): Promise<void> {
   }
 }
 
+// ✅ ИСПРАВЛЕНИЕ: Полная очистка формы при создании
 function openCreateVariantDialog(): void {
   if (!hasValidContext.value) {
     $q.notify({ type: 'negative', message: 'Выберите сервис для создания варианта' });
     return;
   }
 
+  console.log('🆕 Opening CREATE variant dialog');
   isEditing.value = false;
+
+  // Создаем новый объект без поля id
   currentVariant.value = {
     size_id: '',
     sku: '',
@@ -810,13 +779,30 @@ function openCreateVariantDialog(): void {
     is_active: true,
     attributes: {},
   };
+
+  // ✅ ИСПРАВЛЕНИЕ: Явно удаляем id, если оно есть - используем правильный тип
+  if ('id' in currentVariant.value) {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { id, ...rest } = currentVariant.value;
+    currentVariant.value = rest;
+  }
+
   attributesJsonString.value = '{}';
   attributesError.value = false;
+  attributesErrorMessage.value = '';
   variantDialogVisible.value = true;
+
+  console.log('✅ CREATE form initialized:', {
+    isEditing: isEditing.value,
+    hasId: 'id' in currentVariant.value,
+    formData: currentVariant.value,
+  });
 }
 
 async function openEditVariantDialog(variant: ProductVariant): Promise<void> {
+  console.log('✏️ Opening EDIT variant dialog for:', variant.id);
   isEditing.value = true;
+
   const fullVariantData = await serviceVariantsStore.fetchVariantById(variant.id);
   if (fullVariantData) {
     currentVariant.value = {
@@ -844,7 +830,121 @@ async function openEditVariantDialog(variant: ProductVariant): Promise<void> {
       : '{}';
   }
   attributesError.value = false;
+  attributesErrorMessage.value = '';
   variantDialogVisible.value = true;
+
+  console.log('✅ EDIT form initialized:', {
+    isEditing: isEditing.value,
+    hasId: !!currentVariant.value.id,
+    variantId: currentVariant.value.id,
+    formData: currentVariant.value,
+  });
+}
+
+// ✅ ИСПРАВЛЕНИЕ: Убираем async, так как нет await
+function confirmDeleteVariant(variant: ProductVariant): void {
+  Dialog.create({
+    title: 'Подтвердите удаление',
+    message: `Вы уверены, что хотите удалить вариант "${variant.sku || variant.size.value}"?`,
+    persistent: true,
+    ok: {
+      label: 'Удалить',
+      color: 'negative',
+    },
+    cancel: {
+      label: 'Отмена',
+      flat: true,
+    },
+  }).onOk(() => {
+    // ✅ ИСПРАВЛЕНИЕ: Используем void operator для Promise
+    void serviceVariantsStore.deleteVariant(variant.id);
+  });
+}
+
+function editFromDetail(): void {
+  if (selectedVariantDetail.value) {
+    variantDetailDialogVisible.value = false;
+    // ✅ ИСПРАВЛЕНИЕ: Используем void operator для Promise
+    void openEditVariantDialog(selectedVariantDetail.value);
+  }
+}
+
+function deleteFromDetail(): void {
+  if (selectedVariantDetail.value) {
+    variantDetailDialogVisible.value = false;
+    confirmDeleteVariant(selectedVariantDetail.value);
+  }
+}
+
+function showAttributesDialog(attributes: Record<string, unknown> | null): void {
+  currentAttributes.value = attributes;
+  attributesDialogVisible.value = true;
+}
+
+function formatPrice(price: string): string {
+  if (!price) return '—';
+  const numPrice = parseFloat(price);
+  if (isNaN(numPrice)) return price;
+
+  return new Intl.NumberFormat('ru-RU', {
+    style: 'currency',
+    currency: 'RUB',
+  }).format(numPrice);
+}
+
+// Загрузка размеров через размерную сетку по умолчанию
+async function loadSizes(): Promise<void> {
+  sizesLoading.value = true;
+  try {
+    // 🔧 ИСПРАВЛЕНИЕ: Используем размерную сетку по умолчанию
+
+    // 1. Сначала загружаем размерные сетки
+    const sizeCharts = await sizeChartsStore.fetchSizeCharts();
+
+    if (!sizeCharts || sizeCharts.length === 0) {
+      console.warn('Размерные сетки не найдены');
+      $q.notify({
+        type: 'warning',
+        message: 'Размерные сетки не найдены. Создайте размерную сетку для работы с размерами.',
+      });
+      return;
+    }
+
+    // 2. Используем первую доступную размерную сетку
+    const firstSizeChart = sizeCharts[0];
+    if (!firstSizeChart) {
+      throw new Error('Размерная сетка не найдена');
+    }
+
+    console.info(
+      `Используем размерную сетку по умолчанию: ${firstSizeChart.name || firstSizeChart.id}`,
+    );
+
+    // 3. Устанавливаем размерную сетку и загружаем размеры
+    sizesStore.setSizeChartId(firstSizeChart.id);
+    await sizesStore.fetchSizes();
+  } catch (error) {
+    console.error('Failed to load sizes:', error);
+    $q.notify({
+      type: 'negative',
+      message: 'Не удалось загрузить размеры. Проверьте настройки размерных сеток.',
+    });
+  } finally {
+    sizesLoading.value = false;
+  }
+}
+
+// Загрузка сервисов
+async function loadServices(): Promise<void> {
+  servicesLoading.value = true;
+  try {
+    await servicesStore.fetchServices();
+  } catch (error) {
+    console.error('Failed to load services:', error);
+    $q.notify({ type: 'negative', message: 'Не удалось загрузить сервисы' });
+  } finally {
+    servicesLoading.value = false;
+  }
 }
 
 function validateAttributes(): void {
@@ -871,6 +971,7 @@ function validateAttributes(): void {
   }
 }
 
+// ✅ ИСПРАВЛЕНИЕ: Улучшенная логика сохранения
 async function saveVariant(): Promise<void> {
   if (!canSaveVariant.value) {
     $q.notify({ type: 'negative', message: 'Заполните все обязательные поля.' });
@@ -890,64 +991,102 @@ async function saveVariant(): Promise<void> {
     attributes: currentVariant.value.attributes,
   };
 
+  // ✅ ДОБАВЛЯЕМ ОТЛАДОЧНУЮ ИНФОРМАЦИЮ
+  console.log('🔍 SaveVariant DEBUG:', {
+    isEditing: isEditing.value,
+    hasId: !!currentVariant.value.id,
+    variantId: currentVariant.value.id,
+    willUpdate: isEditing.value && !!currentVariant.value.id,
+    willCreate: !isEditing.value || !currentVariant.value.id,
+    payload,
+  });
+
   let success = false;
+
   if (isEditing.value && currentVariant.value.id) {
+    console.log('🔄 UPDATING variant:', currentVariant.value.id);
     const updatedVariant = await serviceVariantsStore.updateVariant(
       currentVariant.value.id,
       payload as ProductVariantUpdatePayload,
     );
     if (updatedVariant) success = true;
   } else {
-    // Определяем serviceId для создания - используем текущий контекст
-    const targetServiceId = serviceVariantsStore.currentServiceId;
-    if (!targetServiceId) {
-      $q.notify({ type: 'negative', message: 'Не определен сервис для создания варианта.' });
-      return;
-    }
+    console.log('🆕 CREATING new variant');
     const newVariant = await serviceVariantsStore.createVariant(
       payload as ProductVariantCreatePayload,
-      targetServiceId,
     );
     if (newVariant) success = true;
   }
 
   if (success) {
     variantDialogVisible.value = false;
+    resetForm();
   }
 }
 
-async function toggleActiveStatus(variant: ProductVariant): Promise<void> {
-  await serviceVariantsStore.patchVariantStatus(variant.id, !variant.is_active);
+// ✅ ИСПРАВЛЕНИЕ: Полная очистка формы
+function resetForm(): void {
+  console.log('🧹 Resetting form');
+  isEditing.value = false;
+
+  // Создаем новый объект без поля id
+  currentVariant.value = {
+    size_id: '',
+    sku: '',
+    price: '',
+    is_active: true,
+    attributes: {},
+  };
+
+  // ✅ ИСПРАВЛЕНИЕ: Явно удаляем id, если оно есть - используем правильный тип
+  if ('id' in currentVariant.value) {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { id, ...rest } = currentVariant.value;
+    currentVariant.value = rest;
+  }
+
+  attributesJsonString.value = '{}';
+  attributesError.value = false;
+  attributesErrorMessage.value = '';
+
+  console.log('✅ Form reset complete:', {
+    isEditing: isEditing.value,
+    hasId: 'id' in currentVariant.value,
+    formData: currentVariant.value,
+  });
 }
 
-// Функция подтверждения для мобильной версии
-function confirmToggleActiveStatus(variant: ProductVariant): void {
-  if ($q.screen.xs) {
-    const newStatus = !variant.is_active;
-    const action = newStatus ? 'активировать' : 'деактивировать';
+// Массовые операции
+async function bulkActivate(): Promise<void> {
+  if (selectedRows.value.length === 0) return;
 
-    Dialog.create({
-      title: 'Подтвердите действие',
-      message: `Вы уверены, что хотите ${action} вариант "${variant.sku || variant.size.value}"?`,
-      persistent: true,
-      ok: {
-        label: newStatus ? 'Активировать' : 'Деактивировать',
-        color: newStatus ? 'green' : 'orange',
-      },
-      cancel: {
-        label: 'Отмена',
-        flat: true,
-      },
-    }).onOk(() => {
-      void toggleActiveStatus(variant);
-    });
-  } else {
-    // На десктопе сразу меняем статус без подтверждения
-    void toggleActiveStatus(variant);
+  bulkOperationLoading.value = true;
+  try {
+    const ids = selectedRows.value.map((row) => row.id);
+    await serviceVariantsStore.bulkUpdateVariantStatus(ids, true);
+    selectedRows.value = [];
+  } finally {
+    bulkOperationLoading.value = false;
   }
 }
 
-function confirmBulkDelete(): void {
+async function bulkDeactivate(): Promise<void> {
+  if (selectedRows.value.length === 0) return;
+
+  bulkOperationLoading.value = true;
+  try {
+    const ids = selectedRows.value.map((row) => row.id);
+    await serviceVariantsStore.bulkUpdateVariantStatus(ids, false);
+    selectedRows.value = [];
+  } finally {
+    bulkOperationLoading.value = false;
+  }
+}
+
+// ✅ ИСПРАВЛЕНИЕ: Убираем async, используем правильный тип для onOk
+function bulkDelete(): void {
+  if (selectedRows.value.length === 0) return;
+
   Dialog.create({
     title: 'Подтвердите удаление',
     message: `Вы уверены, что хотите удалить ${selectedRows.value.length} вариантов?`,
@@ -961,180 +1100,63 @@ function confirmBulkDelete(): void {
       flat: true,
     },
   }).onOk(() => {
-    void bulkDelete();
+    // ✅ ИСПРАВЛЕНИЕ: Используем void operator и создаем async функцию внутри
+    void (async (): Promise<void> => {
+      bulkOperationLoading.value = true;
+      try {
+        const ids = selectedRows.value.map((row) => row.id);
+        await serviceVariantsStore.bulkDeleteVariants(ids);
+        selectedRows.value = [];
+      } finally {
+        bulkOperationLoading.value = false;
+      }
+    })();
   });
 }
 
-async function bulkDelete(): Promise<void> {
-  bulkOperationLoading.value = true;
-  try {
-    const success = await serviceVariantsStore.bulkDeleteVariants(
-      selectedRows.value.map((row) => row.id),
-    );
-    if (success) {
-      selectedRows.value = [];
-    }
-  } finally {
-    bulkOperationLoading.value = false;
+// 🆕 Диагностика всех вариантов (включая скрытые)
+async function diagnoseAllVariants(): Promise<void> {
+  if (!serviceVariantsStore.currentServiceId) {
+    $q.notify({ type: 'negative', message: 'Выберите сервис для диагностики' });
+    return;
   }
-}
 
-async function bulkActivate(): Promise<void> {
-  bulkOperationLoading.value = true;
+  diagnosisLoading.value = true;
   try {
-    const success = await serviceVariantsStore.bulkUpdateVariantStatus(
-      selectedRows.value.map((row) => row.id),
-      true,
-    );
-    if (success) {
-      selectedRows.value = [];
-    }
-  } finally {
-    bulkOperationLoading.value = false;
-  }
-}
+    console.log('🔍 === ДИАГНОСТИКА ВСЕХ ВАРИАНТОВ ===');
 
-async function bulkDeactivate(): Promise<void> {
-  bulkOperationLoading.value = true;
-  try {
-    const success = await serviceVariantsStore.bulkUpdateVariantStatus(
-      selectedRows.value.map((row) => row.id),
-      false,
+    // Используем метод проверки из стора для получения всех вариантов
+    await serviceVariantsStore.checkExistingVariant(
+      'dummy-size-id',
+      serviceVariantsStore.currentServiceId,
     );
-    if (success) {
-      selectedRows.value = [];
-    }
-  } finally {
-    bulkOperationLoading.value = false;
-  }
-}
 
-function confirmDeleteVariant(variant: ProductVariant): void {
-  Dialog.create({
-    title: 'Подтвердите удаление',
-    message: `Вы уверены, что хотите удалить вариант "${variant.sku || variant.size.value}"?`,
-    persistent: true,
-    ok: {
-      label: 'Удалить',
-      color: 'negative',
-    },
-    cancel: {
-      label: 'Отмена',
-      flat: true,
-    },
-  }).onOk(() => {
-    serviceVariantsStore.deleteVariant(variant.id).catch((error: unknown) => {
-      $q.notify({
-        type: 'negative',
-        message: 'Ошибка при удалении варианта',
-      });
-      console.error('Delete variant error:', error);
+    // Принудительно перезагружаем варианты
+    await serviceVariantsStore.fetchVariants();
+
+    $q.notify({
+      type: 'positive',
+      message: 'Диагностика завершена. Проверьте консоль браузера для подробностей.',
+      timeout: 5000,
     });
-  });
-}
-
-async function openVariantDetailDialog(evt: Event, row: ProductVariant): Promise<void> {
-  const target = evt.target as HTMLElement;
-  if (target.closest('.q-btn') || target.closest('button')) {
-    return;
-  }
-
-  const fullVariantData = await serviceVariantsStore.fetchVariantById(row.id);
-  if (fullVariantData) {
-    selectedVariantDetail.value = fullVariantData;
-    variantDetailDialogVisible.value = true;
-  }
-}
-
-async function editFromDetail(): Promise<void> {
-  if (selectedVariantDetail.value) {
-    variantDetailDialogVisible.value = false;
-    await openEditVariantDialog(selectedVariantDetail.value);
-  }
-}
-
-function deleteFromDetail(): void {
-  if (selectedVariantDetail.value) {
-    variantDetailDialogVisible.value = false;
-    confirmDeleteVariant(selectedVariantDetail.value);
-  }
-}
-
-function showAttributesDialog(attributes: Record<string, unknown> | null): void {
-  currentAttributes.value = attributes;
-  attributesDialogVisible.value = true;
-}
-
-function formatPrice(price: string): string {
-  return new Intl.NumberFormat('ru-RU', {
-    style: 'currency',
-    currency: 'RUB',
-  }).format(parseFloat(price));
-}
-
-// Загрузка размеров при наличии sizeChartId
-async function loadSizes(): Promise<void> {
-  // TODO: Нужно определить, откуда брать sizeChartId
-  // Возможно, из настроек сервиса или глобальных настроек
-  sizesLoading.value = true;
-  try {
-    // Временно загружаем все размеры без установки конкретной размерной сетки
-    await sizesStore.fetchSizes();
   } catch (error) {
-    console.error('Failed to load sizes:', error);
-    $q.notify({ type: 'negative', message: 'Не удалось загрузить размеры' });
+    console.error('Error during diagnosis:', error);
+    $q.notify({
+      type: 'negative',
+      message: 'Ошибка при диагностике. Проверьте консоль браузера.',
+    });
   } finally {
-    sizesLoading.value = false;
+    diagnosisLoading.value = false;
   }
 }
 
-// Загрузка сервисов
-async function loadServices(): Promise<void> {
-  servicesLoading.value = true;
-  try {
-    await servicesStore.fetchServices();
-  } catch (error) {
-    console.error('Failed to load services:', error);
-    $q.notify({ type: 'negative', message: 'Не удалось загрузить сервисы' });
-  } finally {
-    servicesLoading.value = false;
-  }
-}
-
-// Инициализация данных для выбранного сервиса
-async function initializeServiceData(serviceId: string): Promise<void> {
-  if (!serviceId) {
-    // Нет выбранного сервиса - сброс контекста
-    serviceVariantsStore.clearServiceContext();
-    selectedServiceId.value = '';
-    return;
-  }
-
-  // Конкретный сервис
-  serviceVariantsStore.setServiceContext(serviceId);
-  selectedServiceId.value = serviceId;
-  await serviceVariantsStore.fetchVariants();
-}
-
-// Watcher для отслеживания изменений serviceId в роуте
-watch(
-  () => routeServiceId.value,
-  async (newServiceId) => {
-    if (newServiceId) {
-      await initializeServiceData(newServiceId);
-    }
-  },
-  { immediate: true },
-);
-
+// === LIFECYCLE ===
 onMounted(async () => {
-  // Загружаем справочники
-  await Promise.all([loadServices(), loadSizes()]);
-
-  // Инициализируем данные для текущего сервиса
-  if (routeServiceId.value) {
-    await initializeServiceData(routeServiceId.value);
-  }
+  // Загружаем справочники параллельно
+  await Promise.all([
+    loadServices(),
+    loadSizes(), // Это уже включает загрузку размерных сеток
+  ]);
 });
 </script>
 
@@ -1187,5 +1209,10 @@ onMounted(async () => {
     border-radius: 8px;
     overflow: hidden;
   }
+}
+
+// 🆕 Стили для зачеркнутого текста и индикации использованных размеров
+.text-strike {
+  text-decoration: line-through;
 }
 </style>

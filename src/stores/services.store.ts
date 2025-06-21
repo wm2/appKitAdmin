@@ -43,6 +43,31 @@ export interface ServiceAttribute {
 }
 
 /**
+ * Интерфейс для категории сервиса
+ */
+export interface ServiceFileCategory {
+  readonly id: string;
+  readonly name: string;
+}
+
+/**
+ * Интерфейс для бренда сервиса
+ */
+export interface ServiceFileBrand {
+  readonly id: string;
+  readonly name: string;
+}
+
+/**
+ * Интерфейс для вложения сервиса
+ */
+export interface ServiceFileAttachment {
+  readonly id: string;
+  readonly file: string;
+  readonly is_primary: boolean;
+}
+
+/**
  * Интерфейс для данных сервиса (краткий для списков)
  */
 export interface ServiceFile {
@@ -53,19 +78,9 @@ export interface ServiceFile {
   readonly price?: string;
   readonly old_price?: string;
   readonly has_discount: boolean;
-  readonly categories: readonly Array<{
-    readonly id: string;
-    readonly name: string;
-  }>;
-  readonly brand?: {
-    readonly id: string;
-    readonly name: string;
-  };
-  readonly attachments: readonly Array<{
-    readonly id: string;
-    readonly file: string;
-    readonly is_primary: boolean;
-  }>;
+  readonly categories: ServiceFileCategory[];
+  readonly brand?: ServiceFileBrand;
+  readonly attachments: ServiceFileAttachment[];
 }
 
 /**
@@ -80,7 +95,7 @@ export interface ServiceDetail extends ServiceFile {
   readonly video_url?: string;
   readonly discount_percentage?: number;
   readonly order: number;
-  readonly attributes: Record<string, any>; // JSON поле
+  readonly attributes: Record<string, string | number | boolean>; // JSON поле
   readonly site: string;
   readonly creator: Creator;
   readonly product_type?: {
@@ -91,7 +106,7 @@ export interface ServiceDetail extends ServiceFile {
   readonly parent?: ServiceFile;
   readonly executor?: Creator;
   readonly manager?: Creator;
-  readonly service_attributes?: readonly ServiceAttribute[];
+  readonly service_attributes?: ServiceAttribute[];
   readonly created: string;
   readonly updated: string;
 }
@@ -110,7 +125,7 @@ export interface ServiceCreatePayload {
   old_price?: string;
   sku?: string;
   video_url?: string;
-  attributes?: Record<string, any>;
+  attributes?: Record<string, string | number | boolean>;
   category_ids?: string[];
   brand_id?: string;
   product_type_id?: string;
@@ -135,7 +150,7 @@ export interface ServiceUpdatePayload {
   old_price?: string;
   sku?: string;
   video_url?: string;
-  attributes?: Record<string, any>;
+  attributes?: Record<string, string | number | boolean>;
   category_ids?: string[];
   brand_id?: string;
   product_type_id?: string;
@@ -221,7 +236,7 @@ export const useServicesStore = defineStore('services', () => {
         params: url ? {} : requestParams,
       });
 
-      services.value = Object.freeze(data.results);
+      services.value = data.results;
       return data;
     } catch (error) {
       handleApiError(error as AxiosError<ApiError>, 'Не удалось загрузить список сервисов.');
@@ -280,7 +295,7 @@ export const useServicesStore = defineStore('services', () => {
       const { data } = await api.get<PaginationResponse<ServiceCategory>>(
         `/sites/${siteId.value}/service-categories/`,
       );
-      categories.value = Object.freeze(data.results);
+      categories.value = data.results;
       return data.results;
     } catch (err) {
       handleApiError(err as AxiosError<ApiError>, 'Не удалось загрузить категории.');
@@ -300,7 +315,7 @@ export const useServicesStore = defineStore('services', () => {
       const { data } = await api.get<PaginationResponse<ServiceBrand>>(
         `/sites/${siteId.value}/brands/`,
       );
-      brands.value = Object.freeze(data.results);
+      brands.value = data.results;
       return data.results;
     } catch (err) {
       handleApiError(err as AxiosError<ApiError>, 'Не удалось загрузить бренды.');
@@ -320,7 +335,7 @@ export const useServicesStore = defineStore('services', () => {
       const { data } = await api.get<PaginationResponse<ServiceProductType>>(
         `/sites/${siteId.value}/product-types/`,
       );
-      productTypes.value = Object.freeze(data.results);
+      productTypes.value = data.results;
       return data.results;
     } catch (err) {
       handleApiError(err as AxiosError<ApiError>, 'Не удалось загрузить типы товаров.');
@@ -355,7 +370,7 @@ export const useServicesStore = defineStore('services', () => {
       const { data } = await api.get<ServiceDetail>(
         `/sites/${siteId.value}/services/${serviceId}/`,
       );
-      selectedService.value = Object.freeze(data);
+      selectedService.value = data;
       return data;
     } catch (err) {
       handleApiError(err as AxiosError<ApiError>, 'Не удалось загрузить данные сервиса.');
@@ -589,11 +604,14 @@ export const useServicesStore = defineStore('services', () => {
       const serviceIndex = services.value.findIndex((service) => service.id === serviceId);
       if (serviceIndex !== -1 && services.value[serviceIndex]) {
         const updatedServices = [...services.value];
-        updatedServices[serviceIndex] = {
-          ...updatedServices[serviceIndex],
-          is_published: is_published,
-        };
-        services.value = Object.freeze(updatedServices);
+        const currentService = updatedServices[serviceIndex];
+        if (currentService) {
+          updatedServices[serviceIndex] = {
+            ...currentService,
+            is_published: is_published,
+          };
+          services.value = updatedServices;
+        }
       }
 
       return true;
@@ -666,13 +684,16 @@ export const useServicesStore = defineStore('services', () => {
       serviceIds.forEach((id) => {
         const serviceIndex = updatedServices.findIndex((service) => service.id === id);
         if (serviceIndex !== -1 && updatedServices[serviceIndex]) {
-          updatedServices[serviceIndex] = {
-            ...updatedServices[serviceIndex],
-            is_published: is_published,
-          };
+          const currentService = updatedServices[serviceIndex];
+          if (currentService) {
+            updatedServices[serviceIndex] = {
+              ...currentService,
+              is_published: is_published,
+            };
+          }
         }
       });
-      services.value = Object.freeze(updatedServices);
+      services.value = updatedServices;
 
       Notify.create({
         type: 'positive',

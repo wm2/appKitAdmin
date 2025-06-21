@@ -270,9 +270,7 @@
                     class="row q-gutter-xs items-center"
                   >
                     <q-badge
-                      v-for="(value, index) in attributeType.values
-                        .filter((v) => v.color_code)
-                        .slice(0, 4)"
+                      v-for="value in attributeType.values.filter((v) => v.color_code).slice(0, 4)"
                       :key="value.id"
                       :style="`background-color: ${value.color_code}`"
                       rounded
@@ -794,7 +792,6 @@ import { ref, onMounted } from 'vue';
 import {
   useServiceAttributesStore,
   type AttributeType,
-  type AttributeValue,
   type AttributeValueDetail,
   type AttributeTypeCreatePayload,
   type AttributeTypeUpdatePayload,
@@ -1090,6 +1087,7 @@ function openEditValueDialog(value: AttributeValueDetail): void {
   valueDialogVisible.value = true;
 }
 
+// ✅ ИСПРАВЛЕНИЕ: Правильная типизация payload для AttributeValue
 async function saveAttributeValue(): Promise<void> {
   if (!currentAttributeValue.value.value) {
     $q.notify({ type: 'negative', message: 'Значение атрибута обязательно.' });
@@ -1101,13 +1099,15 @@ async function saveAttributeValue(): Promise<void> {
     return;
   }
 
-  const payload: AttributeValueCreatePayload | AttributeValueUpdatePayload = {
+  // ✅ ИСПРАВЛЕНИЕ: Правильная типизация - создаем объект только с нужными полями
+  const payload = {
     value: currentAttributeValue.value.value,
-    color_code: currentAttributeValue.value.hasColor
-      ? currentAttributeValue.value.color_code
-      : undefined,
     order: currentAttributeValue.value.order,
-  };
+    // ✅ Добавляем color_code только если hasColor true
+    ...(currentAttributeValue.value.hasColor && currentAttributeValue.value.color_code
+      ? { color_code: currentAttributeValue.value.color_code }
+      : {}),
+  } as AttributeValueCreatePayload | AttributeValueUpdatePayload;
 
   let success = false;
   if (isEditingValue.value && currentAttributeValue.value.id) {
@@ -1130,9 +1130,10 @@ async function saveAttributeValue(): Promise<void> {
   }
 }
 
-// === FILTER STATUS TOGGLE ===
-async function toggleFilterStatus(attributeType: AttributeType): Promise<void> {
-  await attributesStore.patchAttributeTypeFilterStatus(
+// ✅ ИСПРАВЛЕНИЕ: Убираем async и await, так как функция возвращает boolean, а не Promise
+function toggleFilterStatus(attributeType: AttributeType): void {
+  // ✅ Используем void operator для игнорирования возвращаемого boolean
+  void attributesStore.patchAttributeTypeFilterStatus(
     attributeType.id,
     !attributeType.show_in_filters,
   );
@@ -1156,10 +1157,10 @@ function confirmToggleFilterStatus(attributeType: AttributeType): void {
         flat: true,
       },
     }).onOk(() => {
-      void toggleFilterStatus(attributeType);
+      toggleFilterStatus(attributeType);
     });
   } else {
-    void toggleFilterStatus(attributeType);
+    toggleFilterStatus(attributeType);
   }
 }
 
@@ -1237,26 +1238,27 @@ async function bulkDelete(): Promise<void> {
   }
 }
 
-async function bulkShowInFilters(): Promise<void> {
+// ✅ ИСПРАВЛЕНИЕ: Убираем async/await и исправляем массовые операции
+function bulkShowInFilters(): void {
   bulkOperationLoading.value = true;
   try {
-    await Promise.all(
-      selectedRows.value.map((row) => attributesStore.patchAttributeTypeFilterStatus(row.id, true)),
-    );
+    // ✅ Используем void operator для каждого вызова
+    selectedRows.value.forEach((row) => {
+      void attributesStore.patchAttributeTypeFilterStatus(row.id, true);
+    });
     selectedRows.value = [];
   } finally {
     bulkOperationLoading.value = false;
   }
 }
 
-async function bulkHideFromFilters(): Promise<void> {
+function bulkHideFromFilters(): void {
   bulkOperationLoading.value = true;
   try {
-    await Promise.all(
-      selectedRows.value.map((row) =>
-        attributesStore.patchAttributeTypeFilterStatus(row.id, false),
-      ),
-    );
+    // ✅ Используем void operator для каждого вызова
+    selectedRows.value.forEach((row) => {
+      void attributesStore.patchAttributeTypeFilterStatus(row.id, false);
+    });
     selectedRows.value = [];
   } finally {
     bulkOperationLoading.value = false;

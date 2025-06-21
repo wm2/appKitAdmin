@@ -103,9 +103,9 @@
       >
         <template v-slot:body-cell-attachments="props">
           <q-td :props="props">
-            <q-avatar v-if="getPrimaryImage(props.row)" size="50px">
+            <q-avatar v-if="getPrimaryImageSafe(props.row)" size="50px">
               <img
-                :src="getPrimaryImage(props.row)"
+                :src="getPrimaryImageSafe(props.row) || ''"
                 alt="Service image"
                 style="max-width: 50px; max-height: 50px; object-fit: contain"
               />
@@ -253,8 +253,8 @@
               />
 
               <!-- Аватар -->
-              <q-avatar v-if="getPrimaryImage(service)" size="40px" class="q-mr-md">
-                <img :src="getPrimaryImage(service)" alt="Service image" />
+              <q-avatar v-if="getPrimaryImageSafe(service)" size="40px" class="q-mr-md">
+                <img :src="getPrimaryImageSafe(service) || ''" alt="Service image" />
               </q-avatar>
               <q-avatar v-else size="40px" class="q-mr-md bg-grey-3">
                 <q-icon name="image" color="grey-6" />
@@ -829,10 +829,10 @@
             <!-- Изображение сервиса -->
             <div
               :class="$q.screen.xs ? 'col-12' : 'col-12 col-md-4'"
-              v-if="getPrimaryImage(selectedServiceDetail)"
+              v-if="getPrimaryImageSafe(selectedServiceDetail)"
             >
               <q-img
-                :src="getPrimaryImage(selectedServiceDetail)"
+                :src="getPrimaryImageSafe(selectedServiceDetail) || ''"
                 :style="
                   $q.screen.xs
                     ? 'max-height: 150px; border-radius: 8px'
@@ -910,7 +910,7 @@
                 </q-item>
 
                 <!-- Свойства товара -->
-                <q-item v-if="selectedServiceDetail.service_attributes?.length > 0">
+                <q-item v-if="hasServiceAttributes(selectedServiceDetail)">
                   <q-item-section>
                     <q-item-label class="text-weight-medium">Свойства товара</q-item-label>
                     <q-item-label caption class="q-mt-sm">
@@ -1002,12 +1002,9 @@ import {
   type ServiceCreatePayload,
   type ServiceUpdatePayload,
   type ServiceCategory,
+  type ServiceAttributeValue,
 } from 'stores/services.store';
-import {
-  useServiceAttributesStore,
-  type AttributeType,
-  type AttributeValueDetail,
-} from 'stores/service-attributes.store';
+import { useServiceAttributesStore } from 'stores/service-attributes.store';
 import { useQuasar, date, Dialog } from 'quasar';
 import type { QTableProps, QTableColumn } from 'quasar';
 
@@ -1118,12 +1115,19 @@ const columns: QTableColumn[] = [
 
 // Computed для получения значений атрибутов
 const getAttributeValues = computed(() => {
-  return (attributeTypeId: string): AttributeValueDetail[] => {
+  return (attributeTypeId: string): ServiceAttributeValue[] => {
     if (!attributeTypeId) return [];
     const attributeType = attributeTypesStore.attributeTypes.find(
       (at) => at.id === attributeTypeId,
     );
-    return attributeType?.values || [];
+    // Преобразуем значения атрибутов в формат ServiceAttributeValue
+    return (attributeType?.values || []).map((value) => ({
+      id: value.id,
+      value: value.value,
+      slug: value.slug,
+      order: value.order,
+      ...(value.color_code && { color_code: value.color_code }),
+    }));
   };
 });
 
@@ -1132,6 +1136,15 @@ function getPrimaryImage(service: ServiceFile | ServiceDetail): string | null {
   if (!service.attachments?.length) return null;
   const primary = service.attachments.find((att) => att.is_primary);
   return primary?.file || service.attachments[0]?.file || null;
+}
+
+function getPrimaryImageSafe(service: ServiceFile | ServiceDetail): string | null {
+  const imageUrl = getPrimaryImage(service);
+  return imageUrl || null;
+}
+
+function hasServiceAttributes(service: ServiceDetail): boolean {
+  return !!(service.service_attributes && service.service_attributes.length > 0);
 }
 
 function toggleRowSelection(service: ServiceFile, selected: boolean): void {
@@ -1289,7 +1302,13 @@ function removeServiceAttribute(index: number): void {
 }
 
 async function onAttributeTypeChange(index: number, attributeTypeId: string): Promise<void> {
-  selectedServiceAttributes.value[index].attributeValueId = '';
+  const selectedAttribute = selectedServiceAttributes.value[index];
+  if (!selectedAttribute) {
+    console.warn('Selected service attribute not found at index', index);
+    return;
+  }
+
+  selectedAttribute.attributeValueId = '';
   if (attributeTypeId) {
     await attributeTypesStore.fetchAttributeValues(attributeTypeId);
   }
@@ -1330,7 +1349,7 @@ function removeFile(index: number): void {
 function filterCategories(val: string, update: (fn: () => void) => void): void {
   update(() => {
     if (val === '') {
-      filteredCategories.value = servicesStore.categories;
+      filteredCategories.value = [...servicesStore.categories];
     } else {
       const needle = val.toLowerCase();
       filteredCategories.value = servicesStore.categories.filter((category) =>
@@ -1343,7 +1362,7 @@ function filterCategories(val: string, update: (fn: () => void) => void): void {
 function filterServices(val: string, update: (fn: () => void) => void): void {
   update(() => {
     if (val === '') {
-      availableServices.value = servicesStore.services;
+      availableServices.value = [...servicesStore.services];
     } else {
       const needle = val.toLowerCase();
       availableServices.value = servicesStore.services.filter((service) =>
@@ -1365,7 +1384,7 @@ async function saveService(): Promise<void> {
   }
 
   // Подготовка JSON атрибутов
-  const attributes: Record<string, any> = {};
+  const attributes: Record<string, string | number | boolean> = {};
   customAttributes.value.forEach((attr) => {
     if (attr.key.trim() && attr.value.trim()) {
       attributes[attr.key.trim()] = attr.value.trim();
@@ -1380,34 +1399,45 @@ async function saveService(): Promise<void> {
     }
   });
 
-  const payload: ServiceCreatePayload | ServiceUpdatePayload = {
+  // Создаем базовый payload
+  const basePayload = {
     name: currentService.value.name.trim(),
     content: currentService.value.content,
-    title: currentService.value.title.trim() || undefined,
-    description: currentService.value.description.trim() || undefined,
-    keywords: currentService.value.keywords.trim() || undefined,
     is_published: currentService.value.is_published,
-    price: currentService.value.price || undefined,
-    old_price: currentService.value.old_price || undefined,
-    sku: currentService.value.sku.trim() || undefined,
-    video_url: currentService.value.video_url.trim() || undefined,
-    category_ids:
-      currentService.value.category_ids.length > 0 ? currentService.value.category_ids : undefined,
-    brand_id: currentService.value.brand_id || undefined,
-    product_type_id: currentService.value.product_type_id || undefined,
-    parent_id: currentService.value.parent_id || undefined,
-    attributes: Object.keys(attributes).length > 0 ? attributes : undefined,
-    service_attribute_values:
-      serviceAttributeValues.length > 0 ? serviceAttributeValues : undefined,
-    attachments: currentService.value.newFiles || undefined,
+    ...(currentService.value.title.trim() && { title: currentService.value.title.trim() }),
+    ...(currentService.value.description.trim() && {
+      description: currentService.value.description.trim(),
+    }),
+    ...(currentService.value.keywords.trim() && { keywords: currentService.value.keywords.trim() }),
+    ...(currentService.value.price && { price: currentService.value.price }),
+    ...(currentService.value.old_price && { old_price: currentService.value.old_price }),
+    ...(currentService.value.sku.trim() && { sku: currentService.value.sku.trim() }),
+    ...(currentService.value.video_url.trim() && {
+      video_url: currentService.value.video_url.trim(),
+    }),
+    ...(currentService.value.brand_id && { brand_id: currentService.value.brand_id }),
+    ...(currentService.value.product_type_id && {
+      product_type_id: currentService.value.product_type_id,
+    }),
+    ...(currentService.value.parent_id && { parent_id: currentService.value.parent_id }),
+    ...(currentService.value.category_ids.length > 0 && {
+      category_ids: currentService.value.category_ids,
+    }),
+    ...(Object.keys(attributes).length > 0 && { attributes }),
+    ...(serviceAttributeValues.length > 0 && { service_attribute_values: serviceAttributeValues }),
+    ...(currentService.value.newFiles &&
+      currentService.value.newFiles.length > 0 && { attachments: currentService.value.newFiles }),
   };
 
   let success = false;
   if (isEditing.value && currentService.value.id) {
-    const updatedService = await servicesStore.updateService(currentService.value.id, payload);
+    const updatedService = await servicesStore.updateService(
+      currentService.value.id,
+      basePayload as ServiceUpdatePayload,
+    );
     if (updatedService) success = true;
   } else {
-    const newService = await servicesStore.createService(payload as ServiceCreatePayload);
+    const newService = await servicesStore.createService(basePayload as ServiceCreatePayload);
     if (newService) success = true;
   }
 
@@ -1561,21 +1591,8 @@ function formatDate(dateString: string): string {
   return date.formatDate(dateString, 'DD.MM.YYYY HH:mm');
 }
 
-onMounted(async () => {
-  await Promise.all([
-    servicesStore.fetchServices(),
-    servicesStore.fetchCategories(),
-    servicesStore.fetchBrands(),
-    servicesStore.fetchProductTypes(),
-    attributeTypesStore.fetchAttributeTypes(),
-    loadAvailableSizes(),
-  ]);
-  filteredCategories.value = servicesStore.categories;
-  availableServices.value = servicesStore.services;
-});
-
 // Загрузка доступных размеров
-async function loadAvailableSizes(): Promise<void> {
+function loadAvailableSizes(): void {
   try {
     // Здесь должен быть вызов к API для получения размеров
     // Временно используем пустой массив
@@ -1584,6 +1601,19 @@ async function loadAvailableSizes(): Promise<void> {
     console.error('Ошибка загрузки размеров:', error);
   }
 }
+
+onMounted(async () => {
+  await Promise.all([
+    servicesStore.fetchServices(),
+    servicesStore.fetchCategories(),
+    servicesStore.fetchBrands(),
+    servicesStore.fetchProductTypes(),
+    attributeTypesStore.fetchAttributeTypes(),
+  ]);
+  loadAvailableSizes();
+  filteredCategories.value = [...servicesStore.categories];
+  availableServices.value = [...servicesStore.services];
+});
 </script>
 
 <style scoped lang="scss">

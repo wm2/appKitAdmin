@@ -405,6 +405,7 @@ export const useServiceAttributesStore = defineStore('serviceAttributes', () => 
   // === ATTRIBUTE VALUES ACTIONS ===
 
   /**
+   * ✅ ИСПРАВЛЕНИЕ: Возвращаем правильный тип
    * Получение значений для конкретного типа атрибута
    */
   async function fetchAttributeValues(
@@ -416,7 +417,13 @@ export const useServiceAttributesStore = defineStore('serviceAttributes', () => 
       return [];
     }
 
-    return fetchAttributeValuesWithPagination(attributeTypeId, url);
+    try {
+      const response = await fetchAttributeValuesWithPagination(attributeTypeId, url);
+      return response.results; // ✅ Возвращаем массив результатов, а не весь response
+    } catch (error) {
+      console.error('Error in fetchAttributeValues:', error);
+      return [];
+    }
   }
 
   /**
@@ -662,11 +669,12 @@ export const useServiceAttributesStore = defineStore('serviceAttributes', () => 
     }
   }
 
+  // ✅ ИСПРАВЛЕНИЕ: Правильная типизация при обновлении массива
   // Быстрое обновление статуса "показан в фильтрах" через PATCH
-  async function patchAttributeTypeFilterStatus(
+  function patchAttributeTypeFilterStatus(
     attributeTypeId: string,
     show_in_filters: boolean,
-  ): Promise<boolean> {
+  ): boolean {
     if (!siteId.value) {
       Notify.create({ type: 'negative', message: 'VITE_SITE_ID не определен.' });
       return false;
@@ -678,18 +686,32 @@ export const useServiceAttributesStore = defineStore('serviceAttributes', () => 
     }
 
     try {
-      // Обновляем локальный массив без полной перезагрузки
+      // ✅ ИСПРАВЛЕНИЕ: Правильная типизация при обновлении массива
       const attributeTypeIndex = attributeTypes.value.findIndex(
         (type) => type.id === attributeTypeId,
       );
 
       if (attributeTypeIndex !== -1 && attributeTypes.value[attributeTypeIndex]) {
-        const updatedTypes = [...attributeTypes.value];
-        updatedTypes[attributeTypeIndex] = {
-          ...updatedTypes[attributeTypeIndex],
-          show_in_filters: show_in_filters,
-        };
-        attributeTypes.value = Object.freeze(updatedTypes);
+        const currentType = attributeTypes.value[attributeTypeIndex];
+        if (currentType) {
+          const updatedTypes = [...attributeTypes.value];
+          // ✅ Создаем новый объект с всеми обязательными полями
+          updatedTypes[attributeTypeIndex] = Object.freeze({
+            id: currentType.id,
+            name: currentType.name,
+            slug: currentType.slug,
+            max_values_per_product: currentType.max_values_per_product,
+            is_required: currentType.is_required,
+            order: currentType.order,
+            show_in_filters: show_in_filters,
+            site: currentType.site,
+            creator: currentType.creator,
+            values: currentType.values,
+            created: currentType.created,
+            updated: currentType.updated,
+          });
+          attributeTypes.value = Object.freeze(updatedTypes);
+        }
       }
 
       return true;
