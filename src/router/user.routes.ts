@@ -18,7 +18,7 @@ export const userRoutes: RouteRecordRaw[] = [
     ],
   },
   {
-    path: '/brands',
+    path: '/dashboard/brands',
     component: () => import('layouts/UserLayout.vue'),
     children: [
       {
@@ -34,7 +34,7 @@ export const userRoutes: RouteRecordRaw[] = [
     ],
   },
   {
-    path: '/measurement-systems',
+    path: '/dashboard/measurement-systems',
     component: () => import('layouts/UserLayout.vue'),
     children: [
       {
@@ -50,7 +50,7 @@ export const userRoutes: RouteRecordRaw[] = [
     ],
   },
   {
-    path: '/product-types',
+    path: '/dashboard/product-types',
     component: () => import('layouts/UserLayout.vue'),
     children: [
       {
@@ -66,7 +66,7 @@ export const userRoutes: RouteRecordRaw[] = [
     ],
   },
   {
-    path: '/size-charts',
+    path: '/dashboard/size-charts',
     component: () => import('layouts/UserLayout.vue'),
     children: [
       {
@@ -82,7 +82,7 @@ export const userRoutes: RouteRecordRaw[] = [
     ],
   },
   {
-    path: '/sizes',
+    path: '/dashboard/sizes',
     component: () => import('layouts/UserLayout.vue'),
     children: [
       {
@@ -98,7 +98,7 @@ export const userRoutes: RouteRecordRaw[] = [
     ],
   },
   {
-    path: '/service-categories',
+    path: '/dashboard/service-categories',
     component: () => import('layouts/UserLayout.vue'),
     children: [
       {
@@ -114,7 +114,7 @@ export const userRoutes: RouteRecordRaw[] = [
     ],
   },
   {
-    path: '/service-attributes',
+    path: '/dashboard/service-attributes',
     component: () => import('layouts/UserLayout.vue'),
     children: [
       {
@@ -130,7 +130,7 @@ export const userRoutes: RouteRecordRaw[] = [
     ],
   },
   {
-    path: '/services',
+    path: '/dashboard/services',
     component: () => import('layouts/UserLayout.vue'),
     children: [
       {
@@ -146,7 +146,23 @@ export const userRoutes: RouteRecordRaw[] = [
     ],
   },
   {
-    path: '/service-variants',
+    path: '/dashboard/pages',
+    component: () => import('layouts/UserLayout.vue'),
+    children: [
+      {
+        path: '',
+        name: 'PagesPage',
+        component: () => import('pages/PagesPage.vue'),
+        meta: {
+          title: 'Управление страницами',
+          icon: 'article',
+          requiresAuth: true,
+        },
+      },
+    ],
+  },
+  {
+    path: '/dashboard/service-variants',
     component: () => import('layouts/UserLayout.vue'),
     children: [
       {

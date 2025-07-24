@@ -1,3 +1,5 @@
+// src/stores/services.store.ts
+
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { api } from 'boot/axios';
@@ -59,7 +61,19 @@ export interface ServiceFileBrand {
 }
 
 /**
- * Интерфейс для вложения сервиса
+ * Интерфейс для вложения сервиса (НОВЫЙ ОТДЕЛЬНЫЙ API)
+ */
+export interface ServiceAttachment {
+  readonly id: string;
+  readonly file: string;
+  readonly blurhash?: string;
+  readonly alt_text?: string;
+  readonly is_primary: boolean;
+  readonly order: number;
+}
+
+/**
+ * Интерфейс для вложения сервиса (СТАРЫЙ API - для совместимости)
  */
 export interface ServiceFileAttachment {
   readonly id: string;
@@ -80,7 +94,7 @@ export interface ServiceFile {
   readonly has_discount: boolean;
   readonly categories: ServiceFileCategory[];
   readonly brand?: ServiceFileBrand;
-  readonly attachments: ServiceFileAttachment[];
+  readonly attachments: ServiceFileAttachment[]; // Старый API
 }
 
 /**
@@ -112,6 +126,26 @@ export interface ServiceDetail extends ServiceFile {
 }
 
 /**
+ * Payload для создания вложения
+ */
+export interface ServiceAttachmentCreatePayload {
+  file: File;
+  alt_text?: string | undefined;
+  is_primary?: boolean;
+  order?: number;
+}
+
+/**
+ * Payload для обновления вложения
+ */
+export interface ServiceAttachmentUpdatePayload {
+  file?: File;
+  alt_text?: string;
+  is_primary?: boolean;
+  order?: number;
+}
+
+/**
  * Payload для создания сервиса
  */
 export interface ServiceCreatePayload {
@@ -132,8 +166,10 @@ export interface ServiceCreatePayload {
   parent_id?: string;
   executor_id?: string;
   manager_id?: string;
-  attachments?: File[];
+  attachments?: File[]; // Старый API
   service_attribute_values?: string[]; // Массив ID значений атрибутов
+  // НОВЫЕ ПОЛЯ ДЛЯ ФАЙЛОВ
+  newAttachments?: ServiceAttachmentCreatePayload[]; // Новый API
 }
 
 /**
@@ -157,8 +193,10 @@ export interface ServiceUpdatePayload {
   parent_id?: string;
   executor_id?: string;
   manager_id?: string;
-  attachments?: File[];
+  attachments?: File[]; // Старый API
   service_attribute_values?: string[]; // Массив ID значений атрибутов
+  // НОВЫЕ ПОЛЯ ДЛЯ ФАЙЛОВ
+  newAttachments?: ServiceAttachmentCreatePayload[]; // Новый API
 }
 
 // === СПРАВОЧНИКИ ===
@@ -193,6 +231,16 @@ interface ApiError {
   readonly [key: string]: unknown;
 }
 
+/**
+ * Интерфейс для ответа API attachments
+ */
+interface AttachmentsApiResponse {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: ServiceAttachment[];
+}
+
 export const useServicesStore = defineStore('services', () => {
   // === STATE ===
   const services = ref<readonly ServiceFile[]>([]);
@@ -200,6 +248,10 @@ export const useServicesStore = defineStore('services', () => {
   const categories = ref<readonly ServiceCategory[]>([]);
   const brands = ref<readonly ServiceBrand[]>([]);
   const productTypes = ref<readonly ServiceProductType[]>([]);
+
+  // НОВОЕ: состояние для управления attachments
+  const serviceAttachments = ref<Record<string, ServiceAttachment[]>>({});
+  const attachmentsLoading = ref(false);
 
   // === GETTERS ===
   const siteId = computed(() => VITE_SITE_ID);
@@ -279,6 +331,250 @@ export const useServicesStore = defineStore('services', () => {
       message: errorMessage,
       timeout: 5000,
     });
+  }
+
+  // === НОВЫЕ МЕТОДЫ ДЛЯ ATTACHMENTS ===
+
+  /**
+   * Валидация файла изображения
+   */
+  function validateImageFile(file: File): { isValid: boolean; error?: string } {
+    const imageTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+    const maxSizeBytes = 10 * 1024 * 1024; // 10MB
+
+    if (!imageTypes.includes(file.type)) {
+      return { isValid: false, error: 'Файл должен быть изображением (JPG, PNG, GIF, WebP).' };
+    }
+
+    if (file.size > maxSizeBytes) {
+      return { isValid: false, error: 'Размер файла не должен превышать 10MB.' };
+    }
+
+    return { isValid: true };
+  }
+
+  /**
+   * Получение attachments для сервиса
+   */
+  function getServiceAttachments(serviceId: string): ServiceAttachment[] {
+    return serviceAttachments.value[serviceId] || [];
+  }
+
+  /**
+   * Загрузка attachments для сервиса
+   */
+  async function fetchServiceAttachments(serviceId: string): Promise<ServiceAttachment[]> {
+    if (!siteId.value || !serviceId) {
+      console.warn('VITE_SITE_ID and serviceId are required');
+      return [];
+    }
+
+    attachmentsLoading.value = true;
+    try {
+      const { data } = await api.get<AttachmentsApiResponse>(
+        `/sites/${siteId.value}/services/${serviceId}/attachments/`,
+      );
+
+      serviceAttachments.value = {
+        ...serviceAttachments.value,
+        [serviceId]: data.results,
+      };
+
+      return data.results;
+    } catch (err) {
+      handleApiError(err as AxiosError<ApiError>, 'Не удалось загрузить изображения товара.');
+      return [];
+    } finally {
+      attachmentsLoading.value = false;
+    }
+  }
+
+  /**
+   * Создание attachment
+   */
+  async function createServiceAttachment(
+    serviceId: string,
+    payload: ServiceAttachmentCreatePayload,
+  ): Promise<ServiceAttachment | null> {
+    if (!siteId.value || !serviceId || !payload.file) {
+      console.warn('VITE_SITE_ID, serviceId and file are required');
+      return null;
+    }
+
+    attachmentsLoading.value = true;
+    try {
+      const formData = new FormData();
+      formData.append('file', payload.file);
+
+      if (payload.alt_text) formData.append('alt_text', payload.alt_text);
+      if (payload.is_primary !== undefined)
+        formData.append('is_primary', String(payload.is_primary));
+      if (payload.order !== undefined) formData.append('order', String(payload.order));
+
+      const { data } = await api.post<ServiceAttachment>(
+        `/sites/${siteId.value}/services/${serviceId}/attachments/`,
+        formData,
+        { headers: { 'Content-Type': 'multipart/form-data' } },
+      );
+
+      Notify.create({ type: 'positive', message: 'Изображение успешно добавлено.' });
+
+      // Обновляем локальный кеш
+      await fetchServiceAttachments(serviceId);
+
+      return data;
+    } catch (err) {
+      handleApiError(err as AxiosError<ApiError>, 'Ошибка при добавлении изображения.');
+      return null;
+    } finally {
+      attachmentsLoading.value = false;
+    }
+  }
+
+  /**
+   * Обновление attachment
+   */
+  async function updateServiceAttachment(
+    serviceId: string,
+    attachmentId: string,
+    payload: ServiceAttachmentUpdatePayload,
+  ): Promise<ServiceAttachment | null> {
+    if (!siteId.value || !serviceId || !attachmentId) {
+      console.warn('VITE_SITE_ID, serviceId and attachmentId are required');
+      return null;
+    }
+
+    attachmentsLoading.value = true;
+    try {
+      const formData = new FormData();
+
+      if (payload.file) formData.append('file', payload.file);
+      if (payload.alt_text !== undefined) formData.append('alt_text', payload.alt_text);
+      if (payload.is_primary !== undefined)
+        formData.append('is_primary', String(payload.is_primary));
+      if (payload.order !== undefined) formData.append('order', String(payload.order));
+
+      const { data } = await api.patch<ServiceAttachment>(
+        `/sites/${siteId.value}/services/${serviceId}/attachments/${attachmentId}/`,
+        formData,
+        { headers: { 'Content-Type': 'multipart/form-data' } },
+      );
+
+      Notify.create({ type: 'positive', message: 'Изображение успешно обновлено.' });
+
+      // Обновляем локальный кеш
+      await fetchServiceAttachments(serviceId);
+
+      return data;
+    } catch (err) {
+      handleApiError(err as AxiosError<ApiError>, 'Ошибка при обновлении изображения.');
+      return null;
+    } finally {
+      attachmentsLoading.value = false;
+    }
+  }
+
+  /**
+   * Удаление attachment
+   */
+  async function deleteServiceAttachment(
+    serviceId: string,
+    attachmentId: string,
+  ): Promise<boolean> {
+    if (!siteId.value || !serviceId || !attachmentId) {
+      console.warn('VITE_SITE_ID, serviceId and attachmentId are required');
+      return false;
+    }
+
+    attachmentsLoading.value = true;
+    try {
+      await api.delete(`/sites/${siteId.value}/services/${serviceId}/attachments/${attachmentId}/`);
+
+      Notify.create({ type: 'positive', message: 'Изображение успешно удалено.' });
+
+      // Обновляем локальный кеш
+      await fetchServiceAttachments(serviceId);
+
+      return true;
+    } catch (err) {
+      handleApiError(err as AxiosError<ApiError>, 'Ошибка при удалении изображения.');
+      return false;
+    } finally {
+      attachmentsLoading.value = false;
+    }
+  }
+
+  /**
+   * Установка главного изображения
+   */
+  async function setServicePrimaryAttachment(
+    serviceId: string,
+    attachmentId: string,
+  ): Promise<boolean> {
+    return !!(await updateServiceAttachment(serviceId, attachmentId, { is_primary: true }));
+  }
+
+  /**
+   * Массовая загрузка attachments
+   */
+  async function uploadMultipleServiceAttachments(
+    serviceId: string,
+    files: File[],
+    altTexts?: string[],
+  ): Promise<ServiceAttachment[]> {
+    if (!siteId.value || !serviceId || !files.length) {
+      console.warn('VITE_SITE_ID, serviceId and files are required');
+      return [];
+    }
+
+    const results: ServiceAttachment[] = [];
+    const isFirstUpload = getServiceAttachments(serviceId).length === 0;
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (!file) continue;
+
+      const validation = validateImageFile(file);
+      if (!validation.isValid) {
+        Notify.create({
+          type: 'negative',
+          message: `${file.name}: ${validation.error}`,
+        });
+        continue;
+      }
+
+      const payload: ServiceAttachmentCreatePayload = {
+        file,
+        alt_text: altTexts?.[i],
+        is_primary: i === 0 && isFirstUpload,
+        order: getServiceAttachments(serviceId).length + i,
+      };
+
+      const result = await createServiceAttachment(serviceId, payload);
+      if (result) results.push(result);
+    }
+
+    if (results.length > 0) {
+      Notify.create({
+        type: 'positive',
+        message: `Успешно загружено ${results.length} изображений.`,
+      });
+    }
+
+    return results;
+  }
+
+  /**
+   * Очистка кеша attachments для сервиса
+   */
+  function clearServiceAttachments(serviceId?: string): void {
+    if (serviceId) {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { [serviceId]: _removed, ...rest } = serviceAttachments.value;
+      serviceAttachments.value = rest;
+    } else {
+      serviceAttachments.value = {};
+    }
   }
 
   // === СПРАВОЧНИКИ ===
@@ -371,6 +667,10 @@ export const useServicesStore = defineStore('services', () => {
         `/sites/${siteId.value}/services/${serviceId}/`,
       );
       selectedService.value = data;
+
+      // Автоматически загружаем attachments
+      await fetchServiceAttachments(serviceId);
+
       return data;
     } catch (err) {
       handleApiError(err as AxiosError<ApiError>, 'Не удалось загрузить данные сервиса.');
@@ -380,7 +680,7 @@ export const useServicesStore = defineStore('services', () => {
   }
 
   /**
-   * Создание нового сервиса
+   * Создание нового сервиса с автоматической загрузкой файлов
    */
   async function createService(payload: ServiceCreatePayload): Promise<ServiceDetail | null> {
     if (!siteId.value) {
@@ -394,6 +694,7 @@ export const useServicesStore = defineStore('services', () => {
     }
 
     try {
+      // ШАГ 1: Создаем сервис без файлов
       const formData = new FormData();
       formData.append('name', payload.name);
       formData.append('content', payload.content);
@@ -430,7 +731,7 @@ export const useServicesStore = defineStore('services', () => {
         );
       }
 
-      // Файлы
+      // СТАРЫЕ Файлы (для обратной совместимости)
       if (payload.attachments && payload.attachments.length > 0) {
         payload.attachments.forEach((file, index) => {
           formData.append(`attachments[${index}]`, file);
@@ -447,6 +748,15 @@ export const useServicesStore = defineStore('services', () => {
         type: 'positive',
         message: `Сервис "${data.name}" успешно создан.`,
       });
+
+      // ШАГ 2: Если есть новые файлы - загружаем их через новый API
+      if (payload.newAttachments && payload.newAttachments.length > 0) {
+        const uploadPromises = payload.newAttachments.map((attachmentPayload) =>
+          createServiceAttachment(data.id, attachmentPayload),
+        );
+
+        await Promise.all(uploadPromises);
+      }
 
       await fetchServices();
       return data;
@@ -507,6 +817,7 @@ export const useServicesStore = defineStore('services', () => {
         );
       }
 
+      // СТАРЫЕ Файлы (для обратной совместимости)
       if (payload.attachments && payload.attachments.length > 0) {
         payload.attachments.forEach((file, index) => {
           formData.append(`attachments[${index}]`, file);
@@ -527,6 +838,15 @@ export const useServicesStore = defineStore('services', () => {
         type: 'positive',
         message: `Сервис "${data.name}" успешно обновлен.`,
       });
+
+      // Если есть новые файлы - загружаем их через новый API
+      if (payload.newAttachments && payload.newAttachments.length > 0) {
+        const uploadPromises = payload.newAttachments.map((attachmentPayload) =>
+          createServiceAttachment(serviceId, attachmentPayload),
+        );
+
+        await Promise.all(uploadPromises);
+      }
 
       await fetchServices();
       if (selectedService.value?.id === serviceId) {
@@ -560,6 +880,9 @@ export const useServicesStore = defineStore('services', () => {
         type: 'positive',
         message: 'Сервис успешно удален.',
       });
+
+      // Очищаем кеш attachments
+      clearServiceAttachments(serviceId);
 
       await fetchServices();
       if (selectedService.value?.id === serviceId) {
@@ -646,6 +969,9 @@ export const useServicesStore = defineStore('services', () => {
         type: 'positive',
         message: `Успешно удалено ${serviceIds.length} сервисов.`,
       });
+
+      // Очищаем кеш attachments для удаленных сервисов
+      serviceIds.forEach(clearServiceAttachments);
 
       await fetchServices();
       return true;
@@ -749,6 +1075,10 @@ export const useServicesStore = defineStore('services', () => {
     productTypes,
     loading: pagination.loading,
 
+    // НОВОЕ: Attachments state
+    serviceAttachments: computed(() => serviceAttachments.value),
+    attachmentsLoading,
+
     // Pagination state
     currentPage: computed(() => pagination.currentPage.value),
     pageSize: computed(() => pagination.pageSize.value),
@@ -770,6 +1100,17 @@ export const useServicesStore = defineStore('services', () => {
     updateService,
     deleteService,
     clearSelectedService,
+
+    // НОВОЕ: Attachments methods
+    getServiceAttachments,
+    fetchServiceAttachments,
+    createServiceAttachment,
+    updateServiceAttachment,
+    deleteServiceAttachment,
+    setServicePrimaryAttachment,
+    uploadMultipleServiceAttachments,
+    clearServiceAttachments,
+    validateImageFile,
 
     // Поиск и фильтрация
     searchServices,

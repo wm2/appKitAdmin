@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { ref, computed } from 'vue';
+import { ref, computed, readonly } from 'vue';
 import { api } from 'boot/axios';
 import { Notify } from 'quasar';
 import type { AxiosError } from 'axios';
@@ -69,12 +69,53 @@ export interface ProductVariantUpdatePayload {
 }
 
 /**
+ * Интерфейс для вложения варианта сервиса (attachments)
+ */
+export interface VariantAttachment {
+  readonly id: string;
+  readonly file: string;
+  readonly alt_text?: string;
+  readonly is_primary: boolean;
+  readonly order: number;
+}
+
+/**
+ * Payload для создания вложения варианта
+ */
+export interface VariantAttachmentCreatePayload {
+  file: File;
+  alt_text?: string | undefined;
+  is_primary?: boolean;
+  order?: number;
+}
+
+/**
+ * Payload для обновления вложения варианта
+ */
+export interface VariantAttachmentUpdatePayload {
+  file?: File;
+  alt_text?: string;
+  is_primary?: boolean;
+  order?: number;
+}
+
+/**
  * Интерфейс для ошибок от API
  */
 interface ApiError {
   readonly detail?: string;
   readonly message?: string;
   readonly [key: string]: unknown;
+}
+
+/**
+ * Интерфейс для ответа API attachments вариантов
+ */
+interface VariantAttachmentsApiResponse {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: VariantAttachment[];
 }
 
 // === СТОР ===
@@ -84,6 +125,10 @@ export const useServiceVariantsStore = defineStore('serviceVariants', () => {
   const variants = ref<readonly ProductVariant[]>([]);
   const selectedVariant = ref<ProductVariantDetail | null>(null);
   const currentServiceId = ref<string | null>(null);
+
+  // НОВОЕ: состояние для управления attachments вариантов
+  const variantAttachments = ref<Record<string, VariantAttachment[]>>({});
+  const attachmentsLoading = ref(false);
 
   // === GETTERS ===
   const siteId = computed(() => VITE_SITE_ID);
@@ -887,6 +932,312 @@ export const useServiceVariantsStore = defineStore('serviceVariants', () => {
     }
   }
 
+  // === МЕТОДЫ ДЛЯ РАБОТЫ С ATTACHMENTS ВАРИАНТОВ ===
+
+  /**
+   * Валидация файла изображения
+   */
+  function validateImageFile(file: File): { isValid: boolean; error?: string } {
+    const imageTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+    const maxSizeBytes = 10 * 1024 * 1024; // 10MB
+
+    if (!imageTypes.includes(file.type)) {
+      return { isValid: false, error: 'Файл должен быть изображением (JPG, PNG, GIF, WebP).' };
+    }
+
+    if (file.size > maxSizeBytes) {
+      return { isValid: false, error: 'Размер файла не должен превышать 10MB.' };
+    }
+
+    return { isValid: true };
+  }
+
+  /**
+   * Получение attachments для варианта
+   */
+  function getVariantAttachments(variantId: string): VariantAttachment[] {
+    return variantAttachments.value[variantId] || [];
+  }
+
+  /**
+   * Загрузка attachments для варианта
+   */
+  async function fetchVariantAttachments(
+    variantId: string,
+    serviceId?: string | null,
+  ): Promise<VariantAttachment[]> {
+    const effectiveServiceId = serviceId || currentServiceId.value;
+    if (!validateRequiredParams(effectiveServiceId) || !variantId) {
+      console.warn('serviceId and variantId are required');
+      return [];
+    }
+
+    attachmentsLoading.value = true;
+    try {
+      const { data } = await api.get<VariantAttachmentsApiResponse>(
+        `/sites/${siteId.value}/services/${effectiveServiceId}/variants/${variantId}/attachments/`,
+      );
+
+      variantAttachments.value = {
+        ...variantAttachments.value,
+        [variantId]: data.results,
+      };
+
+      return data.results;
+    } catch (err) {
+      handleApiError(err as AxiosError<ApiError>, 'Не удалось загрузить изображения варианта.');
+      return [];
+    } finally {
+      attachmentsLoading.value = false;
+    }
+  }
+
+  /**
+   * Создание attachment для варианта
+   */
+  async function createVariantAttachment(
+    variantId: string,
+    payload: VariantAttachmentCreatePayload,
+    serviceId?: string | null,
+  ): Promise<VariantAttachment | null> {
+    const effectiveServiceId = serviceId || currentServiceId.value;
+    if (!validateRequiredParams(effectiveServiceId) || !variantId || !payload.file) {
+      console.warn('serviceId, variantId and file are required');
+      return null;
+    }
+
+    attachmentsLoading.value = true;
+    try {
+      const formData = new FormData();
+      formData.append('file', payload.file);
+
+      if (payload.alt_text) formData.append('alt_text', payload.alt_text);
+      if (payload.is_primary !== undefined)
+        formData.append('is_primary', String(payload.is_primary));
+      if (payload.order !== undefined) formData.append('order', String(payload.order));
+
+      const uploadUrl = `/sites/${siteId.value}/services/${effectiveServiceId}/variants/${variantId}/attachments/`;
+      console.log('🚀 POST request to:', uploadUrl);
+      console.log(
+        '📦 FormData entries:',
+        Array.from(formData.entries()).map(([key, value]) =>
+          value instanceof File ? [key, `File(${value.name})`] : [key, value],
+        ),
+      );
+
+      const { data } = await api.post<VariantAttachment>(uploadUrl, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+
+      console.log('✅ Upload successful:', data);
+
+      Notify.create({ type: 'positive', message: 'Изображение варианта успешно добавлено.' });
+
+      // Обновляем локальный кеш
+      await fetchVariantAttachments(variantId, effectiveServiceId);
+
+      return data;
+    } catch (err) {
+      handleApiError(err as AxiosError<ApiError>, 'Ошибка при добавлении изображения варианта.');
+      return null;
+    } finally {
+      attachmentsLoading.value = false;
+    }
+  }
+
+  /**
+   * Обновление attachment варианта
+   */
+  async function updateVariantAttachment(
+    variantId: string,
+    attachmentId: string,
+    payload: VariantAttachmentUpdatePayload,
+    serviceId?: string | null,
+  ): Promise<VariantAttachment | null> {
+    const effectiveServiceId = serviceId || currentServiceId.value;
+    if (!validateRequiredParams(effectiveServiceId) || !variantId || !attachmentId) {
+      console.warn('serviceId, variantId and attachmentId are required');
+      return null;
+    }
+
+    attachmentsLoading.value = true;
+    try {
+      const formData = new FormData();
+
+      if (payload.file) formData.append('file', payload.file);
+      if (payload.alt_text !== undefined) formData.append('alt_text', payload.alt_text);
+      if (payload.is_primary !== undefined)
+        formData.append('is_primary', String(payload.is_primary));
+      if (payload.order !== undefined) formData.append('order', String(payload.order));
+
+      const { data } = await api.patch<VariantAttachment>(
+        `/sites/${siteId.value}/services/${effectiveServiceId}/variants/${variantId}/attachments/${attachmentId}/`,
+        formData,
+        { headers: { 'Content-Type': 'multipart/form-data' } },
+      );
+
+      Notify.create({ type: 'positive', message: 'Изображение варианта успешно обновлено.' });
+
+      // Обновляем локальный кеш
+      await fetchVariantAttachments(variantId, effectiveServiceId);
+
+      return data;
+    } catch (err) {
+      handleApiError(err as AxiosError<ApiError>, 'Ошибка при обновлении изображения варианта.');
+      return null;
+    } finally {
+      attachmentsLoading.value = false;
+    }
+  }
+
+  /**
+   * Удаление attachment варианта
+   */
+  async function deleteVariantAttachment(
+    variantId: string,
+    attachmentId: string,
+    serviceId?: string | null,
+  ): Promise<boolean> {
+    const effectiveServiceId = serviceId || currentServiceId.value;
+    if (!validateRequiredParams(effectiveServiceId) || !variantId || !attachmentId) {
+      console.warn('serviceId, variantId and attachmentId are required');
+      return false;
+    }
+
+    attachmentsLoading.value = true;
+    try {
+      await api.delete(
+        `/sites/${siteId.value}/services/${effectiveServiceId}/variants/${variantId}/attachments/${attachmentId}/`,
+      );
+
+      Notify.create({ type: 'positive', message: 'Изображение варианта успешно удалено.' });
+
+      // Обновляем локальный кеш
+      await fetchVariantAttachments(variantId, effectiveServiceId);
+
+      return true;
+    } catch (err) {
+      handleApiError(err as AxiosError<ApiError>, 'Ошибка при удалении изображения варианта.');
+      return false;
+    } finally {
+      attachmentsLoading.value = false;
+    }
+  }
+
+  /**
+   * Установка главного изображения варианта
+   */
+  async function setVariantPrimaryAttachment(
+    variantId: string,
+    attachmentId: string,
+    serviceId?: string | null,
+  ): Promise<boolean> {
+    return !!(await updateVariantAttachment(
+      variantId,
+      attachmentId,
+      { is_primary: true },
+      serviceId,
+    ));
+  }
+
+  /**
+   * Массовая загрузка attachments для варианта
+   */
+  async function uploadMultipleVariantAttachments(
+    variantId: string,
+    files: File[],
+    altTexts?: string[],
+    serviceId?: string | null,
+  ): Promise<VariantAttachment[]> {
+    console.log('🔄 uploadMultipleVariantAttachments called with:', {
+      variantId,
+      filesCount: files.length,
+      altTextsCount: altTexts?.length || 0,
+      serviceId,
+    });
+
+    const effectiveServiceId = serviceId || currentServiceId.value;
+    console.log('🔍 Validation check:', {
+      hasEffectiveServiceId: !!effectiveServiceId,
+      hasVariantId: !!variantId,
+      hasFiles: !!files.length,
+      validateRequiredParams: validateRequiredParams(effectiveServiceId),
+    });
+
+    if (!validateRequiredParams(effectiveServiceId) || !variantId || !files.length) {
+      console.warn('❌ Validation failed - serviceId, variantId and files are required');
+      return [];
+    }
+
+    console.log('✅ Using serviceId:', effectiveServiceId);
+    console.log(
+      '🎯 Will upload to URL pattern: /sites/{siteId}/services/{serviceId}/variants/{variantId}/attachments/',
+    );
+    const results: VariantAttachment[] = [];
+    const isFirstUpload = getVariantAttachments(variantId).length === 0;
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (!file) continue;
+
+      console.log(`📤 Processing file ${i + 1}/${files.length}:`, {
+        name: file.name,
+        type: file.type,
+        size: file.size,
+        altText: altTexts?.[i],
+      });
+
+      const validation = validateImageFile(file);
+      if (!validation.isValid) {
+        console.warn(`❌ File validation failed for ${file.name}:`, validation.error);
+        Notify.create({
+          type: 'negative',
+          message: `${file.name}: ${validation.error}`,
+        });
+        continue;
+      }
+
+      const payload: VariantAttachmentCreatePayload = {
+        file,
+        alt_text: altTexts?.[i],
+        is_primary: i === 0 && isFirstUpload,
+        order: getVariantAttachments(variantId).length + i,
+      };
+
+      console.log(`🚀 Calling createVariantAttachment for file: ${file.name}`, payload);
+      const result = await createVariantAttachment(variantId, payload, effectiveServiceId);
+      if (result) {
+        console.log(`✅ Successfully uploaded file: ${file.name}`, result);
+        results.push(result);
+      } else {
+        console.error(`❌ Failed to upload file: ${file.name}`);
+      }
+    }
+
+    if (results.length > 0) {
+      console.log(`🎉 All files uploaded successfully. Total: ${results.length}`);
+      Notify.create({
+        type: 'positive',
+        message: `Успешно загружено ${results.length} изображений для варианта.`,
+      });
+    }
+
+    return results;
+  }
+
+  /**
+   * Очистка кеша attachments для варианта
+   */
+  function clearVariantAttachments(variantId?: string): void {
+    if (variantId) {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { [variantId]: _removed, ...rest } = variantAttachments.value;
+      variantAttachments.value = rest;
+    } else {
+      variantAttachments.value = {};
+    }
+  }
+
   // === RETURN STORE INTERFACE ===
   return {
     // State
@@ -942,5 +1293,18 @@ export const useServiceVariantsStore = defineStore('serviceVariants', () => {
 
     // 🎯 КРИТИЧЕСКИ ВАЖНЫЙ МЕТОД - был пропущен в оригинальном коде!
     handleTableRequest,
+
+    // Attachments
+    variantAttachments: readonly(variantAttachments),
+    attachmentsLoading: readonly(attachmentsLoading),
+    validateImageFile,
+    getVariantAttachments,
+    fetchVariantAttachments,
+    createVariantAttachment,
+    updateVariantAttachment,
+    deleteVariantAttachment,
+    setVariantPrimaryAttachment,
+    uploadMultipleVariantAttachments,
+    clearVariantAttachments,
   };
 });

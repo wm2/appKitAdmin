@@ -1,0 +1,31 @@
+{
+  "name": "appkitadmin",
+  "version": "0.0.1",
+  "description": "A Quasar Project",
+  "author": "Vitaliy Sazonov <games.wm2@gmail.com>",
+  "private": true,
+  "type": "module",
+  "module": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "axios": "1.9.0",
+    "pinia": "3.0.3",
+    "@quasar/extras": "1.17.0",
+    "quasar": "2.18.1",
+    "vue": "3.5.16",
+    "vue-router": "4.5.1",
+    "compression": "^1.7.5",
+    "express": "^4.21.2",
+    "serialize-javascript": "^6.0.2"
+  },
+  "engines": {
+    "node": "^28 || ^26 || ^24 || ^22 || ^20 || ^18",
+    "npm": ">= 6.13.4",
+    "yarn": ">= 1.21.1"
+  },
+  "quasar": {
+    "ssr": true
+  }
+}

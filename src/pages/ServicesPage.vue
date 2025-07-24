@@ -1,3 +1,4 @@
+<!-- src/pages/ServicesPage.vue -->
 <template>
   <q-page padding>
     <!-- Адаптивный заголовок -->
@@ -566,7 +567,6 @@
             <div v-if="variantsExpanded" class="q-mb-md">
               <div class="text-subtitle2 q-mb-sm">Варианты товара</div>
 
-              <!-- Импорт стора вариантов и доступных размеров -->
               <div
                 v-for="(variant, index) in serviceVariants"
                 :key="index"
@@ -634,6 +634,7 @@
               />
             </div>
           </q-slide-transition>
+
           <div class="q-mb-md">
             <div class="text-subtitle2 q-mb-sm">Свойства товара</div>
             <div
@@ -751,50 +752,245 @@
             />
           </div>
 
-          <!-- Файлы -->
-          <q-file
-            v-model="currentService.newFiles"
-            label="Файлы изображений"
-            accept=".jpg, .jpeg, .png, .gif, .svg, .webp"
-            multiple
-            clearable
-            outlined
-            @update:model-value="handleFileUpload"
-            class="q-mb-md"
-          >
-            <template v-slot:prepend>
-              <q-icon name="attach_file" />
-            </template>
-          </q-file>
+          <!-- НОВЫЙ UI: Изображения в вертикальном списке -->
+          <div class="q-mb-md">
+            <div class="text-subtitle1 q-mb-md">Изображения товара</div>
 
-          <!-- Превью файлов -->
-          <div v-if="filesPreviews.length > 0" class="q-mb-md">
-            <div class="text-subtitle2 q-mb-sm">Выбранные файлы:</div>
-            <div class="row q-gutter-md">
-              <q-card
-                v-for="(preview, index) in filesPreviews"
-                :key="index"
-                flat
-                bordered
-                class="preview-card"
-              >
-                <div class="preview-image-container">
-                  <q-img :src="preview.url" fit="cover" class="preview-image" />
-                  <q-btn
-                    flat
-                    round
-                    dense
-                    icon="close"
-                    size="sm"
-                    color="negative"
-                    @click="removeFile(index)"
-                    class="absolute-top-right q-ma-xs"
-                  />
+            <!-- Список новых файлов -->
+            <div v-if="filesPreviews.length > 0" class="q-mb-lg">
+              <div class="text-subtitle2 q-mb-sm">
+                Новые изображения ({{ filesPreviews.length }})
+              </div>
+
+              <div class="column q-gutter-md">
+                <div
+                  v-for="(preview, index) in filesPreviews"
+                  :key="index"
+                  class="service-image-card"
+                >
+                  <div class="row q-gutter-md items-start">
+                    <!-- Изображение -->
+                    <div class="service-img-wrapper">
+                      <q-img
+                        :src="preview.url"
+                        fit="cover"
+                        class="service-image"
+                        :style="{ aspectRatio: '1/1' }"
+                      >
+                        <template v-slot:loading>
+                          <div class="absolute-full flex flex-center">
+                            <q-spinner color="primary" size="2em" />
+                          </div>
+                        </template>
+                      </q-img>
+
+                      <!-- Кнопка удаления -->
+                      <q-btn
+                        flat
+                        round
+                        dense
+                        icon="close"
+                        size="sm"
+                        color="negative"
+                        @click="removeFile(index)"
+                        class="remove-img-btn"
+                      />
+
+                      <!-- Порядковый номер -->
+                      <q-badge :label="index + 1" color="primary" class="img-number-badge" />
+                    </div>
+
+                    <!-- Поля управления -->
+                    <div class="flex-grow column q-gutter-md">
+                      <!-- Название файла и плашка главного изображения -->
+                      <div class="row items-center q-gutter-sm">
+                        <div class="text-weight-medium">{{ preview.name }}</div>
+                        <q-chip
+                          v-if="preview.is_primary"
+                          color="positive"
+                          text-color="white"
+                          size="sm"
+                          dense
+                          icon="star"
+                        >
+                          Главное изображение
+                        </q-chip>
+                      </div>
+
+                      <!-- Описание -->
+                      <q-input
+                        v-model="preview.alt_text"
+                        label="Описание изображения"
+                        outlined
+                        dense
+                        placeholder="Краткое описание для SEO и доступности"
+                      />
+
+                      <!-- Главное изображение -->
+                      <q-checkbox
+                        v-model="preview.is_primary"
+                        color="positive"
+                        @update:model-value="(val) => updatePrimaryImage(index, val)"
+                      >
+                        <template v-slot:default>
+                          <span class="q-ml-sm">
+                            <q-icon
+                              v-if="preview.is_primary"
+                              name="star"
+                              color="amber"
+                              class="q-mr-xs"
+                            />
+                            Использовать как главное изображение
+                          </span>
+                        </template>
+                      </q-checkbox>
+                    </div>
+
+                    <!-- Кнопки перемещения -->
+                    <div class="column q-gutter-xs">
+                      <q-btn
+                        v-if="index > 0"
+                        flat
+                        round
+                        dense
+                        icon="keyboard_arrow_up"
+                        size="sm"
+                        color="primary"
+                        @click="moveFileUp(index)"
+                        title="Переместить вверх"
+                      />
+                      <q-btn
+                        v-if="index < filesPreviews.length - 1"
+                        flat
+                        round
+                        dense
+                        icon="keyboard_arrow_down"
+                        size="sm"
+                        color="primary"
+                        @click="moveFileDown(index)"
+                        title="Переместить вниз"
+                      />
+                    </div>
+                  </div>
                 </div>
-                <q-card-section class="q-pa-sm">
-                  <div class="text-caption text-center ellipsis">{{ preview.name }}</div>
-                </q-card-section>
-              </q-card>
+              </div>
+            </div>
+
+            <!-- Кнопка добавления изображений -->
+            <q-file
+              ref="fileInput"
+              v-model="currentService.newFiles"
+              label="Добавить изображения"
+              accept=".jpg, .jpeg, .png, .gif, .svg, .webp"
+              multiple
+              clearable
+              outlined
+              @update:model-value="handleFileUpload"
+              class="q-mb-md"
+            >
+              <template v-slot:prepend>
+                <q-icon name="add_photo_alternate" />
+              </template>
+            </q-file>
+
+            <!-- Существующие изображения (только при редактировании) -->
+            <div v-if="isEditing && currentService.id" class="existing-images-section">
+              <q-separator class="q-mb-md" />
+              <div class="text-subtitle2 q-mb-md">
+                Загруженные изображения
+                <q-chip
+                  v-if="getServiceImages({ id: currentService.id } as ServiceDetail).length > 0"
+                  color="grey-3"
+                  text-color="grey-8"
+                  size="sm"
+                  :label="getServiceImages({ id: currentService.id } as ServiceDetail).length"
+                />
+              </div>
+
+              <div
+                v-if="getServiceImages({ id: currentService.id } as ServiceDetail).length > 0"
+                class="column q-gutter-md"
+              >
+                <div
+                  v-for="image in getServiceImages({ id: currentService.id } as ServiceDetail)"
+                  :key="image.id"
+                  class="uploaded-image-card"
+                >
+                  <div class="row q-gutter-md items-start">
+                    <!-- Изображение -->
+                    <div class="service-img-wrapper">
+                      <q-img
+                        :src="image.file"
+                        fit="cover"
+                        class="service-image"
+                        :style="{ aspectRatio: '1/1' }"
+                      >
+                        <template v-slot:loading>
+                          <div class="absolute-full flex flex-center">
+                            <q-spinner color="primary" size="2em" />
+                          </div>
+                        </template>
+                      </q-img>
+
+                      <!-- Порядковый номер -->
+                      <q-badge :label="image.order + 1" color="primary" class="img-number-badge" />
+                    </div>
+
+                    <!-- Поля управления -->
+                    <div class="flex-grow column q-gutter-md">
+                      <!-- Описание -->
+                      <q-input
+                        :model-value="image.alt_text || ''"
+                        label="Описание изображения"
+                        outlined
+                        dense
+                        placeholder="Краткое описание для SEO и доступности"
+                        @update:model-value="
+                          (val) => updateExistingImageAlt(image, String(val || ''))
+                        "
+                      />
+
+                      <!-- Главное изображение -->
+                      <q-checkbox
+                        :model-value="image.is_primary"
+                        color="positive"
+                        @update:model-value="(val) => updateExistingImagePrimary(image, val)"
+                      >
+                        <template v-slot:default>
+                          <span class="q-ml-sm">
+                            <q-icon
+                              v-if="image.is_primary"
+                              name="star"
+                              color="amber"
+                              class="q-mr-xs"
+                            />
+                            Использовать как главное изображение
+                          </span>
+                        </template>
+                      </q-checkbox>
+                    </div>
+
+                    <!-- Действия -->
+                    <div class="column q-gutter-xs">
+                      <q-btn
+                        flat
+                        round
+                        dense
+                        icon="delete"
+                        size="sm"
+                        color="negative"
+                        @click="deleteExistingImageConfirm(image)"
+                        title="Удалить изображение"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div v-else class="text-center q-py-lg text-grey-6">
+                <q-icon name="photo_library" size="3em" />
+                <div class="q-mt-sm">У товара пока нет загруженных изображений</div>
+              </div>
             </div>
           </div>
 
@@ -825,30 +1021,99 @@
         </q-card-section>
 
         <q-card-section v-if="selectedServiceDetail">
-          <div :class="$q.screen.xs ? 'column q-gutter-md' : 'row q-gutter-md'">
-            <!-- Изображение сервиса -->
-            <div
-              :class="$q.screen.xs ? 'col-12' : 'col-12 col-md-4'"
-              v-if="getPrimaryImageSafe(selectedServiceDetail)"
+          <!-- Слайдер изображений -->
+          <div v-if="getServiceImages(selectedServiceDetail).length > 0" class="q-mb-lg">
+            <!-- Множественные изображения - карусель -->
+            <q-carousel
+              v-if="getServiceImages(selectedServiceDetail).length > 1"
+              v-model="detailCarouselSlide"
+              swipeable
+              animated
+              arrows
+              navigation
+              infinite
+              height="300px"
+              class="detail-carousel rounded-borders"
+              control-color="primary"
+              navigation-position="bottom"
             >
+              <q-carousel-slide
+                v-for="image in getServiceImages(selectedServiceDetail)"
+                :key="image.id"
+                :name="image.id"
+                class="carousel-slide"
+              >
+                <q-img
+                  :src="image.file"
+                  :alt="image.alt_text || 'Изображение товара'"
+                  fit="contain"
+                  class="full-width full-height"
+                  spinner-color="primary"
+                  spinner-size="40px"
+                >
+                  <template v-slot:error>
+                    <div class="absolute-full flex flex-center bg-grey-3 text-grey-7">
+                      <q-icon name="broken_image" size="2em" />
+                      <div class="text-body2 q-mt-sm">Изображение недоступно</div>
+                    </div>
+                  </template>
+                </q-img>
+
+                <!-- Описание изображения -->
+                <div v-if="image.alt_text" class="absolute-bottom image-description">
+                  <div class="bg-dark text-white q-pa-sm">
+                    <div class="text-body2">{{ image.alt_text }}</div>
+                  </div>
+                </div>
+              </q-carousel-slide>
+            </q-carousel>
+
+            <!-- Одно изображение -->
+            <div v-else class="single-image-container">
               <q-img
-                :src="getPrimaryImageSafe(selectedServiceDetail) || ''"
-                :style="
-                  $q.screen.xs
-                    ? 'max-height: 150px; border-radius: 8px'
-                    : 'max-height: 200px; border-radius: 8px'
-                "
+                :src="getServiceImages(selectedServiceDetail)[0]?.file"
+                :alt="getServiceImages(selectedServiceDetail)[0]?.alt_text || 'Изображение товара'"
+                style="max-height: 300px; border-radius: 8px"
                 fit="contain"
                 class="bg-grey-1"
+                spinner-color="primary"
+                spinner-size="40px"
               >
                 <template v-slot:error>
                   <div class="absolute-full flex flex-center bg-grey-3 text-grey-7">
-                    <q-icon name="broken_image" size="50px" />
+                    <q-icon name="broken_image" size="2em" />
                   </div>
                 </template>
               </q-img>
             </div>
 
+            <!-- Информация о количестве изображений -->
+            <div class="text-center q-mt-md">
+              <q-chip color="grey-3" text-color="grey-8" size="sm" icon="photo_library">
+                {{ getServiceImages(selectedServiceDetail).length }}
+                {{
+                  getServiceImages(selectedServiceDetail).length === 1
+                    ? 'изображение'
+                    : 'изображений'
+                }}
+              </q-chip>
+            </div>
+          </div>
+
+          <!-- Контент с уменьшенным шрифтом -->
+          <div class="q-mb-md">
+            <div class="text-subtitle2 q-mb-sm">Содержимое промо акции</div>
+            <q-card flat bordered class="bg-grey-1">
+              <q-card-section>
+                <div
+                  class="text-caption content-preview"
+                  v-html="formatContent(selectedServiceDetail.content)"
+                ></div>
+              </q-card-section>
+            </q-card>
+          </div>
+
+          <div :class="$q.screen.xs ? 'column q-gutter-md' : 'row q-gutter-md'">
             <!-- Информация о сервисе -->
             <div class="col">
               <q-list>
@@ -1003,6 +1268,7 @@ import {
   type ServiceUpdatePayload,
   type ServiceCategory,
   type ServiceAttributeValue,
+  type ServiceAttachment,
 } from 'stores/services.store';
 import { useServiceAttributesStore } from 'stores/service-attributes.store';
 import { useQuasar, date, Dialog } from 'quasar';
@@ -1021,17 +1287,20 @@ const selectedRows = ref<ServiceFile[]>([]);
 const bulkOperationLoading = ref(false);
 const seoExpanded = ref(false);
 const useHtmlEditor = ref(false);
+const detailCarouselSlide = ref<string>('');
 
 // Категории
 const categoriesLoading = ref(false);
 const filteredCategories = ref<ServiceCategory[]>([]);
 const availableServices = ref<ServiceFile[]>([]);
 
-// Файлы
+// НОВЫЕ файлы - вертикальный список с описанием справа
 const filesPreviews = ref<
   Array<{
     name: string;
     url: string;
+    alt_text: string;
+    is_primary: boolean;
   }>
 >([]);
 
@@ -1147,6 +1416,11 @@ function hasServiceAttributes(service: ServiceDetail): boolean {
   return !!(service.service_attributes && service.service_attributes.length > 0);
 }
 
+function getServiceImages(service: ServiceDetail): ServiceAttachment[] {
+  // Возвращаем attachments из кеша store
+  return servicesStore.getServiceAttachments(service.id) || [];
+}
+
 function toggleRowSelection(service: ServiceFile, selected: boolean): void {
   if (selected) {
     if (!selectedRows.value.some((row) => row.id === service.id)) {
@@ -1181,6 +1455,19 @@ async function openServiceDetailFromButton(row: ServiceFile): Promise<void> {
   const fullServiceData = await servicesStore.fetchServiceById(row.id);
   if (fullServiceData) {
     selectedServiceDetail.value = fullServiceData;
+
+    // ВАЖНО: Загружаем attachments для этого сервиса
+    await servicesStore.fetchServiceAttachments(fullServiceData.id);
+
+    // Устанавливаем первый слайд карусели
+    const images = servicesStore.getServiceAttachments(fullServiceData.id);
+    if (images && images.length > 0) {
+      const primaryImage = images.find((img: ServiceAttachment) => img.is_primary) || images[0];
+      if (primaryImage) {
+        detailCarouselSlide.value = primaryImage.id;
+      }
+    }
+
     serviceDetailDialogVisible.value = true;
   }
 }
@@ -1195,6 +1482,9 @@ async function openEditServiceDialog(service: ServiceFile): Promise<void> {
   isEditing.value = true;
   const fullServiceData = await servicesStore.fetchServiceById(service.id);
   if (fullServiceData) {
+    // ВАЖНО: Загружаем attachments для редактирования
+    await servicesStore.fetchServiceAttachments(fullServiceData.id);
+
     fillFormFromService(fullServiceData);
   }
   serviceDialogVisible.value = true;
@@ -1285,6 +1575,31 @@ function addServiceVariant(): void {
   });
 }
 
+/**
+ * Простое форматирование контента (для превью)
+ * Обрабатывает базовый Markdown в HTML
+ */
+function formatContent(content: string): string {
+  if (!content) return '';
+
+  // Простая обработка markdown для превью
+  return (
+    content
+      // Горизонтальные разделители (должны идти первыми)
+      .replace(/^---$/gm, '<hr>')
+      // Заголовки
+      .replace(/^# (.*$)/gm, '<h1>$1</h1>')
+      .replace(/^## (.*$)/gm, '<h2>$1</h2>')
+      .replace(/^### (.*$)/gm, '<h3>$1</h3>')
+      // Жирный и курсивный текст
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.*?)\*/g, '<em>$1</em>')
+      // Простые списки (базовая обработка)
+      .replace(/^- (.*$)/gm, '• $1')
+      // Переносы строк
+      .replace(/\n/g, '<br>')
+  );
+}
 function removeServiceVariant(index: number): void {
   serviceVariants.value.splice(index, 1);
 }
@@ -1322,17 +1637,132 @@ function removeCustomAttribute(index: number): void {
   customAttributes.value.splice(index, 1);
 }
 
+// НОВАЯ функция обработки файлов
 function handleFileUpload(files: File[] | File | null): void {
   if (!files) {
+    filesPreviews.value.forEach((preview) => {
+      if (preview.url) {
+        URL.revokeObjectURL(preview.url);
+      }
+    });
     filesPreviews.value = [];
     return;
   }
 
   const fileArray = Array.isArray(files) ? files : [files];
-  filesPreviews.value = fileArray.map((file) => ({
-    name: file.name,
-    url: URL.createObjectURL(file),
-  }));
+
+  // Валидация и создание превью
+  const validPreviews: Array<{
+    name: string;
+    url: string;
+    alt_text: string;
+    is_primary: boolean;
+  }> = [];
+
+  fileArray.forEach((file, index) => {
+    const validation = servicesStore.validateImageFile(file);
+
+    if (!validation.isValid) {
+      $q.notify({
+        type: 'negative',
+        message: `${file.name}: ${validation.error}`,
+      });
+      return;
+    }
+
+    const url = URL.createObjectURL(file);
+    validPreviews.push({
+      name: file.name,
+      url,
+      alt_text: '',
+      is_primary: index === 0 && filesPreviews.value.length === 0, // Первый файл главный только если нет других
+    });
+  });
+
+  filesPreviews.value = [...filesPreviews.value, ...validPreviews];
+}
+
+// Функция обновления главного изображения для новых файлов
+function updatePrimaryImage(index: number, isPrimary: boolean): void {
+  if (isPrimary) {
+    // Снимаем флаг is_primary с других файлов
+    filesPreviews.value.forEach((preview, i) => {
+      if (i !== index) {
+        preview.is_primary = false;
+      }
+    });
+  }
+}
+
+// Функции для перемещения файлов
+function moveFileUp(index: number): void {
+  if (index > 0) {
+    const item = filesPreviews.value[index];
+    const file = currentService.value.newFiles?.[index];
+
+    if (!item) return;
+
+    filesPreviews.value.splice(index, 1);
+    filesPreviews.value.splice(index - 1, 0, item);
+
+    if (currentService.value.newFiles && file) {
+      currentService.value.newFiles.splice(index, 1);
+      currentService.value.newFiles.splice(index - 1, 0, file);
+    }
+  }
+}
+
+function moveFileDown(index: number): void {
+  if (index < filesPreviews.value.length - 1) {
+    const item = filesPreviews.value[index];
+    const file = currentService.value.newFiles?.[index];
+
+    if (!item) return;
+
+    filesPreviews.value.splice(index, 1);
+    filesPreviews.value.splice(index + 1, 0, item);
+
+    if (currentService.value.newFiles && file) {
+      currentService.value.newFiles.splice(index, 1);
+      currentService.value.newFiles.splice(index + 1, 0, file);
+    }
+  }
+}
+
+// НОВЫЕ функции управления существующими изображениями
+function updateExistingImageAlt(image: ServiceAttachment, altText: string): void {
+  if (currentService.value.id) {
+    void servicesStore.updateServiceAttachment(currentService.value.id, image.id, {
+      alt_text: altText,
+    });
+  }
+}
+
+function updateExistingImagePrimary(image: ServiceAttachment, isPrimary: boolean): void {
+  if (currentService.value.id && isPrimary) {
+    // Просто устанавливаем главное изображение, без перемещения
+    void servicesStore.setServicePrimaryAttachment(currentService.value.id, image.id);
+  }
+}
+
+function deleteExistingImageConfirm(image: ServiceAttachment): void {
+  Dialog.create({
+    title: 'Удаление изображения',
+    message: `Вы уверены, что хотите удалить это изображение?`,
+    persistent: true,
+    ok: {
+      label: 'Удалить',
+      color: 'negative',
+    },
+    cancel: {
+      label: 'Отмена',
+      flat: true,
+    },
+  }).onOk(() => {
+    if (currentService.value.id) {
+      void servicesStore.deleteServiceAttachment(currentService.value.id, image.id);
+    }
+  });
 }
 
 function removeFile(index: number): void {
@@ -1340,10 +1770,20 @@ function removeFile(index: number): void {
   newFiles.splice(index, 1);
   currentService.value.newFiles = newFiles;
 
-  if (filesPreviews.value[index]) {
-    URL.revokeObjectURL(filesPreviews.value[index].url);
+  const preview = filesPreviews.value[index];
+  if (preview?.url) {
+    URL.revokeObjectURL(preview.url);
   }
+
   filesPreviews.value.splice(index, 1);
+
+  // Если удалили главное изображение, делаем первое оставшееся главным
+  if (preview?.is_primary && filesPreviews.value.length > 0) {
+    const firstPreview = filesPreviews.value[0];
+    if (firstPreview) {
+      firstPreview.is_primary = true;
+    }
+  }
 }
 
 function filterCategories(val: string, update: (fn: () => void) => void): void {
@@ -1372,6 +1812,7 @@ function filterServices(val: string, update: (fn: () => void) => void): void {
   });
 }
 
+// Функция сохранения для нового API
 async function saveService(): Promise<void> {
   if (!currentService.value.name.trim()) {
     $q.notify({ type: 'negative', message: 'Название сервиса обязательно.' });
@@ -1425,9 +1866,21 @@ async function saveService(): Promise<void> {
     }),
     ...(Object.keys(attributes).length > 0 && { attributes }),
     ...(serviceAttributeValues.length > 0 && { service_attribute_values: serviceAttributeValues }),
-    ...(currentService.value.newFiles &&
-      currentService.value.newFiles.length > 0 && { attachments: currentService.value.newFiles }),
   };
+
+  // НОВОЕ: обрабатываем файлы для нового API
+  if (currentService.value.newFiles && filesPreviews.value.length > 0) {
+    const newAttachments = currentService.value.newFiles.map((file, index) => {
+      const preview = filesPreviews.value[index];
+      return {
+        file,
+        alt_text: preview?.alt_text?.trim() || undefined,
+        is_primary: preview?.is_primary || false,
+        order: index,
+      };
+    });
+    (basePayload as ServiceCreatePayload | ServiceUpdatePayload).newAttachments = newAttachments;
+  }
 
   let success = false;
   if (isEditing.value && currentService.value.id) {
@@ -1550,13 +2003,7 @@ function confirmDeleteService(service: ServiceFile): void {
       flat: true,
     },
   }).onOk(() => {
-    servicesStore.deleteService(service.id).catch((error) => {
-      $q.notify({
-        type: 'negative',
-        message: 'Ошибка при удалении сервиса',
-      });
-      console.error('Delete service error:', error);
-    });
+    void servicesStore.deleteService(service.id);
   });
 }
 
@@ -1569,6 +2016,19 @@ async function openServiceDetailDialog(evt: Event, row: ServiceFile): Promise<vo
   const fullServiceData = await servicesStore.fetchServiceById(row.id);
   if (fullServiceData) {
     selectedServiceDetail.value = fullServiceData;
+
+    // ВАЖНО: Загружаем attachments
+    await servicesStore.fetchServiceAttachments(fullServiceData.id);
+
+    // Устанавливаем первый слайд карусели
+    const images = servicesStore.getServiceAttachments(fullServiceData.id);
+    if (images && images.length > 0) {
+      const primaryImage = images.find((img: ServiceAttachment) => img.is_primary) || images[0];
+      if (primaryImage) {
+        detailCarouselSlide.value = primaryImage.id;
+      }
+    }
+
     serviceDetailDialogVisible.value = true;
   }
 }
@@ -1666,35 +2126,134 @@ onMounted(async () => {
   }
 }
 
-.preview-card {
-  position: relative;
-  width: 140px;
+// ПРОСТЫЕ СТИЛИ: БЕЗ ВСЯКИХ МОДИФИКАТОРОВ И ПЛАШЕК
+.service-image-card,
+.uploaded-image-card {
+  background: white;
+  border: 2px solid #e0e0e0;
   border-radius: 12px;
-  overflow: hidden;
-  transition: all 0.2s ease;
+  padding: 16px;
+  transition: all 0.3s ease;
+  position: relative;
 
   &:hover {
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    transform: translateY(-2px);
+    border-color: $primary;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   }
 }
 
-.preview-image-container {
+.service-img-wrapper {
   position: relative;
-  width: 100%;
+  width: 120px;
   height: 120px;
+  border-radius: 8px;
   overflow: hidden;
+  flex-shrink: 0;
 }
 
-.preview-image {
+.service-image {
   width: 100%;
   height: 100%;
-  border-radius: 12px 12px 0 0;
+  border-radius: 8px;
+  background: #f5f5f5;
 }
 
-.absolute-top-right {
+.remove-img-btn {
   position: absolute;
   top: 4px;
   right: 4px;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+
+  &:hover {
+    background: rgba(0, 0, 0, 0.9);
+  }
+}
+
+.img-number-badge {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  font-weight: bold;
+}
+
+.flex-grow {
+  flex: 1;
+}
+
+// Секция существующих изображений
+.existing-images-section {
+  margin-top: 24px;
+  padding-top: 24px;
+}
+
+// Слайдер для детального просмотра
+.detail-carousel {
+  border: 1px solid #e0e0e0;
+  background: #fafafa;
+
+  .carousel-slide {
+    position: relative;
+  }
+}
+
+.single-image-container {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  background: #fafafa;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.image-description {
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.8));
+  padding-top: 20px;
+  width: 100%;
+}
+// Стили для контента в диалоге просмотра (уменьшенный шрифт)
+.content-preview {
+  font-size: 0.75rem !important; // Уменьшенный размер шрифта
+  line-height: 1.4;
+
+  // Стили для отформатированного контента
+  :deep(h1) {
+    font-size: 1.1rem;
+    margin: 0.8rem 0 0.4rem 0;
+    font-weight: 600;
+  }
+
+  :deep(h2) {
+    font-size: 1rem;
+    margin: 0.6rem 0 0.3rem 0;
+    font-weight: 600;
+  }
+
+  :deep(h3) {
+    font-size: 0.9rem;
+    margin: 0.4rem 0 0.2rem 0;
+    font-weight: 600;
+  }
+
+  :deep(p) {
+    margin: 0.3rem 0;
+  }
+
+  :deep(strong) {
+    font-weight: 600;
+  }
+
+  :deep(em) {
+    font-style: italic;
+  }
+
+  // Стили для горизонтальных разделителей
+  :deep(hr) {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 0.8rem 0;
+    width: 100%;
+  }
 }
 </style>

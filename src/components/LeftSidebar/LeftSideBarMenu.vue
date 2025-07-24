@@ -2,7 +2,7 @@
   <q-drawer v-model="uiStore.isLeftDrawerOpen" show-if-above bordered class="bg-grey-1">
     <q-scroll-area class="fit">
       <q-list class="q-pa-sm">
-        <!-- Главная -->
+        <!-- Главная/ -->
         <q-item
           clickable
           v-ripple
@@ -168,6 +168,26 @@
           </q-item-section>
         </q-item>
 
+        <!-- Страницы -->
+        <q-item
+          clickable
+          v-ripple
+          :to="{ name: 'PagesPage' }"
+          active-class="bg-primary text-white"
+          class="rounded-borders q-mb-xs"
+        >
+          <q-item-section avatar>
+            <q-icon name="article" />
+          </q-item-section>
+          <q-item-section>
+            <q-item-label>Промо Акции</q-item-label>
+            <q-item-label caption class="text-grey-6">Управление промо акциями</q-item-label>
+          </q-item-section>
+          <q-item-section side>
+            <q-badge color="info" text-color="white" :label="pagesCount" v-if="pagesCount > 0" />
+          </q-item-section>
+        </q-item>
+
         <!-- Разделитель -->
         <q-separator class="q-my-md" />
 
@@ -271,7 +291,8 @@ import { useSizeChartsStore } from 'stores/size-charts.store';
 import { useServiceCategoriesStore } from 'stores/service-categories.store';
 import { useServicesStore } from 'stores/services.store';
 import { useServiceAttributesStore } from 'stores/service-attributes.store';
-// import { useServiceVariantsStore } from 'stores/service-variants.store'; // Раскомментировать когда создан store
+import { usePagesStore } from 'stores/pages.store';
+import { useServiceVariantsStore } from 'stores/service-variants.store';
 
 const uiStore = useUiStore();
 const brandsStore = useBrandsStore();
@@ -281,7 +302,8 @@ const sizeChartsStore = useSizeChartsStore();
 const serviceCategoriesStore = useServiceCategoriesStore();
 const servicesStore = useServicesStore();
 const serviceAttributesStore = useServiceAttributesStore();
-// const serviceVariantsStore = useServiceVariantsStore(); // Раскомментировать когда создан store
+const pagesStore = usePagesStore();
+const serviceVariantsStore = useServiceVariantsStore();
 
 /**
  * Computed свойства для подсчета количества элементов в бейджах
@@ -294,10 +316,11 @@ const productTypesCount = computed(() => productTypesStore?.totalCount ?? 0);
 const sizeChartsCount = computed(() => sizeChartsStore?.totalCount ?? 0);
 const servicesCount = computed(() => servicesStore?.totalCount ?? 0);
 const serviceAttributesCount = computed(() => serviceAttributesStore?.totalCount ?? 0);
+const pagesCount = computed(() => pagesStore?.totalCount ?? 0);
+const serviceVariantsCount = computed(() => serviceVariantsStore?.totalCount ?? 0);
 
 // Временно устанавливаем в 0 до создания stores
 const sizesCount = computed(() => 0); // Заменить на sizesStore.totalCount когда создан store
-const serviceVariantsCount = computed(() => 0); // Заменить на serviceVariantsStore.totalCount когда создан store
 </script>
 
 <style scoped lang="scss">
